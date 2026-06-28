@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1079747123375",
+    "project_id": "comparaprecio-a1191",
+    "storage_bucket": "comparaprecio-a1191.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1079747123375:android:5b90d47cacb4a24e1c9c5a",
+        "android_client_info": {
+          "package_name": "com.joseluengo.comparaprecios"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBScxuF6RexHPPNIjwChQAO5vGLzmDRI-M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

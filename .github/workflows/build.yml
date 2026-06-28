@@ -1,0 +1,59 @@
+name: Build (APK + AAB firmados)
+
+on:
+  workflow_dispatch: {}        # botón manual en la pestaña Actions
+  push:
+    tags:
+      - 'v*'                   # tambien al crear un tag tipo v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      # --- Firma: reconstruye keystore y key.properties desde los Secrets ---
+      - name: Restaurar keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+
+      - name: Crear key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=keystore.jks
+          EOF
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Build APK (release, para sideload en el Samsung)
+        run: flutter build apk --release
+
+      - name: Build AAB (release, para Google Play)
+        run: flutter build appbundle --release
+
+      - name: Subir artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparaprecios-release
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
