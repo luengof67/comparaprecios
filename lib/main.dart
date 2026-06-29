@@ -6,6 +6,7 @@ import 'firebase_options.dart'; // generado por flutterfire configure
 import 'services/firestore_service.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
+import 'ui/informes_screen.dart';
 import 'ui/lista_compra_screen.dart';
 import 'ui/productos_screen.dart';
 import 'ui/proveedores_screen.dart';
@@ -63,7 +64,19 @@ class _RaizScreenState extends State<RaizScreen> {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: Text(titulos[_tab])),
+      appBar: AppBar(
+        title: Text(titulos[_tab]),
+        actions: [
+          IconButton(
+            tooltip: 'Informes',
+            icon: const Icon(Icons.bar_chart),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => InformesScreen(db: _db)),
+            ),
+          ),
+        ],
+      ),
       body: pantallas[_tab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
