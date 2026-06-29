@@ -89,6 +89,13 @@ class FirestoreService {
 
   Future<void> registrarPrecio(Precio p) => _precios.add(p.toMap());
 
+  /// Consulta puntual (una vez) de los precios de un producto.
+  /// Util para autocompletar el precio al registrar una compra.
+  Future<List<Precio>> preciosDeProductoUnaVez(String productoId) async {
+    final s = await _precios.where('productoId', isEqualTo: productoId).get();
+    return s.docs.map(Precio.fromDoc).toList();
+  }
+
   Future<void> borrarPrecio(String id) => _precios.doc(id).delete();
 
   // ---- COMPRAS ----

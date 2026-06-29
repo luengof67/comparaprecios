@@ -4,6 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart'; // generado por flutterfire configure
 import 'services/firestore_service.dart';
+import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
 import 'ui/lista_compra_screen.dart';
 import 'ui/productos_screen.dart';
@@ -46,10 +47,17 @@ class _RaizScreenState extends State<RaizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final titulos = ['Comparativa', 'Lista compra', 'Productos', 'Proveedores'];
+    final titulos = [
+      'Comparativa',
+      'Lista compra',
+      'Compras',
+      'Productos',
+      'Proveedores'
+    ];
     final pantallas = [
       DashboardScreen(db: _db),
       ListaCompraScreen(db: _db),
+      ComprasScreen(db: _db),
       ProductosScreen(db: _db),
       ProveedoresScreen(db: _db),
     ];
@@ -65,6 +73,8 @@ class _RaizScreenState extends State<RaizScreen> {
               icon: Icon(Icons.compare_arrows), label: 'Comparativa'),
           NavigationDestination(
               icon: Icon(Icons.shopping_cart_outlined), label: 'Lista'),
+          NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined), label: 'Compras'),
           NavigationDestination(
               icon: Icon(Icons.inventory_2_outlined), label: 'Productos'),
           NavigationDestination(
