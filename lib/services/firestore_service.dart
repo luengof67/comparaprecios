@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/compra.dart';
 import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
@@ -89,4 +90,39 @@ class FirestoreService {
   Future<void> registrarPrecio(Precio p) => _precios.add(p.toMap());
 
   Future<void> borrarPrecio(String id) => _precios.doc(id).delete();
+
+  // ---- COMPRAS ----
+  CollectionReference get _compras => _db.collection('compras');
+
+  Stream<List<Compra>> compras() => _compras
+      .orderBy('fecha', descending: true)
+      .snapshots()
+      .map((s) => s.docs.map(Compra.fromDoc).toList());
+
+  /// Registra una compra Y, en el mismo lote, crea un registro de precio
+  /// por cada linea (fuente "compra") para alimentar el historico y la
+  /// comparativa. Una sola operacion atomica.
+  Future<void> registrarCompra(Compra compra) async {
+    final batch = _db.batch();
+
+    // 1) La compra en si.
+    batch.set(_compras.doc(), compra.toMap());
+
+    // 2) Un precio por linea, con la fecha de la compra.
+    for (final l in compra.lineas) {
+      final precio = Precio.nuevo(
+        productoId: l.productoId,
+        proveedorId: compra.proveedorId,
+        precioPaquete: l.precioUnitario, // ya es precio por unidad base
+        cantidad: 1,
+        fecha: compra.fecha,
+        fuente: FuentePrecio.compra,
+      );
+      batch.set(_precios.doc(), precio.toMap());
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> borrarCompra(String id) => _compras.doc(id).delete();
 }

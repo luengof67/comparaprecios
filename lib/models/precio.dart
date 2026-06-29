@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// De donde viene el precio. Permite alimentar la misma coleccion
-/// manualmente o, en el futuro, desde la importacion de albaranes.
-enum FuentePrecio { manual, albaran }
+/// manualmente, desde la importacion de albaranes, o al registrar una compra.
+enum FuentePrecio { manual, albaran, compra }
 
 /// Un registro de precio: "este producto, de este proveedor, costo X en esta fecha".
 ///
@@ -51,7 +51,11 @@ class Precio {
       cantidad: (d['cantidad'] ?? 1).toDouble(),
       precioUnitario: (d['precioUnitario'] ?? 0).toDouble(),
       fecha: (d['fecha'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      fuente: d['fuente'] == 'albaran' ? FuentePrecio.albaran : FuentePrecio.manual,
+      fuente: switch (d['fuente']) {
+        'albaran' => FuentePrecio.albaran,
+        'compra' => FuentePrecio.compra,
+        _ => FuentePrecio.manual,
+      },
       nota: d['nota'],
     );
   }
