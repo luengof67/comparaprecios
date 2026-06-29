@@ -77,6 +77,7 @@ class _ProductoForm extends StatefulWidget {
 class _ProductoFormState extends State<_ProductoForm> {
   late final TextEditingController _nombre;
   late final TextEditingController _categoria;
+  late final TextEditingController _cantidad;
   late UnidadBase _unidad;
 
   @override
@@ -84,23 +85,31 @@ class _ProductoFormState extends State<_ProductoForm> {
     super.initState();
     _nombre = TextEditingController(text: widget.existente?.nombre ?? '');
     _categoria = TextEditingController(text: widget.existente?.categoria ?? 'General');
+    final ch = widget.existente?.cantidadHabitual ?? 0;
+    _cantidad = TextEditingController(text: ch > 0 ? _num(ch) : '');
     _unidad = widget.existente?.unidadBase ?? UnidadBase.kg;
   }
+
+  String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 
   @override
   void dispose() {
     _nombre.dispose();
     _categoria.dispose();
+    _cantidad.dispose();
     super.dispose();
   }
 
   Future<void> _guardar() async {
     if (_nombre.text.trim().isEmpty) return;
+    final cantidad =
+        double.tryParse(_cantidad.text.trim().replaceAll(',', '.')) ?? 0;
     await widget.db.guardarProducto(Producto(
       id: widget.existente?.id ?? '',
       nombre: _nombre.text.trim(),
       categoria: _categoria.text.trim().isEmpty ? 'General' : _categoria.text.trim(),
       unidadBase: _unidad,
+      cantidadHabitual: cantidad,
     ));
     if (mounted) Navigator.pop(context);
   }
@@ -143,6 +152,16 @@ class _ProductoFormState extends State<_ProductoForm> {
             ],
             selected: {_unidad},
             onSelectionChanged: (s) => setState(() => _unidad = s.first),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _cantidad,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Cantidad que sueles comprar (${_unidad.nombre})',
+              helperText: 'Opcional. Sirve para calcular el coste y ahorro reales.',
+              border: const OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 16),
           Row(
