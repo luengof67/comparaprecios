@@ -49,6 +49,10 @@ class FirestoreService {
 
   Future<void> borrarProducto(String id) => _productos.doc(id).delete();
 
+  /// Actualiza solo la cantidad habitual de un producto.
+  Future<void> setCantidad(String id, double cantidad) =>
+      _productos.doc(id).update({'cantidadHabitual': cantidad});
+
   /// Marca o desmarca un producto de la compra actual (solo ese campo).
   Future<void> setEnLista(String id, bool valor) =>
       _productos.doc(id).update({'enLista': valor});

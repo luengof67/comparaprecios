@@ -275,7 +275,7 @@ class _BloqueProveedor extends StatelessWidget {
                   ? Text(
                       '${_num(cant)} $unidad × ${euros3(o.precioUnitario)}/$unidad',
                       style: TextStyle(color: activo ? null : Colors.grey))
-                  : Text('${euros3(o.precioUnitario)}/$unidad · sin cantidad',
+                  : Text('Toca para poner cantidad · ${euros3(o.precioUnitario)}/$unidad',
                       style: TextStyle(color: activo ? null : Colors.grey)),
               trailing: (activo && cant > 0)
                   ? Text(
@@ -284,6 +284,7 @@ class _BloqueProveedor extends StatelessWidget {
                           fontWeight: FontWeight.bold, fontSize: 15),
                     )
                   : null,
+              onTap: () => _editarCantidad(context, c.producto, unidad),
             );
           }),
         ],
@@ -292,4 +293,39 @@ class _BloqueProveedor extends StatelessWidget {
   }
 
   String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+
+  void _editarCantidad(BuildContext context, Producto producto, String unidad) {
+    final ctrl = TextEditingController(
+      text: producto.cantidadHabitual > 0 ? _num(producto.cantidadHabitual) : '',
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(producto.nombre),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Cantidad a comprar ($unidad)',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.')) ?? 0;
+              db.setCantidad(producto.id, v);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
 }
