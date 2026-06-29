@@ -30,6 +30,12 @@ class Producto {
   final String nombre;
   final String categoria; // ej. Verdura, Carne, Aceites...
   final UnidadBase unidadBase;
+
+  /// Cantidad que sueles comprar de este producto (en la unidad base).
+  /// Se usa para calcular el coste total y el ahorro real en la lista de compra.
+  /// 0 = sin definir (retrocompatible con productos antiguos).
+  final double cantidadHabitual;
+
   final String? notas;
 
   Producto({
@@ -37,6 +43,7 @@ class Producto {
     required this.nombre,
     this.categoria = 'General',
     this.unidadBase = UnidadBase.kg,
+    this.cantidadHabitual = 0,
     this.notas,
   });
 
@@ -47,6 +54,7 @@ class Producto {
       nombre: d['nombre'] ?? '',
       categoria: d['categoria'] ?? 'General',
       unidadBase: UnidadBaseX.fromString(d['unidadBase']),
+      cantidadHabitual: (d['cantidadHabitual'] ?? 0).toDouble(),
       notas: d['notas'],
     );
   }
@@ -56,6 +64,7 @@ class Producto {
         'nombreLower': nombre.toLowerCase(), // para buscar/ordenar
         'categoria': categoria,
         'unidadBase': unidadBase.name,
+        'cantidadHabitual': cantidadHabitual,
         'notas': notas,
         'actualizado': FieldValue.serverTimestamp(),
       };
