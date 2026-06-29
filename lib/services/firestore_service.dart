@@ -49,6 +49,10 @@ class FirestoreService {
 
   Future<void> borrarProducto(String id) => _productos.doc(id).delete();
 
+  /// Marca o desmarca un producto de la compra actual (solo ese campo).
+  Future<void> setEnLista(String id, bool valor) =>
+      _productos.doc(id).update({'enLista': valor});
+
   // ---- PRECIOS ----
   /// Todos los precios (para calcular el dashboard global).
   Stream<List<Precio>> precios() => _precios

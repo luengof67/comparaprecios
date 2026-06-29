@@ -36,6 +36,10 @@ class Producto {
   /// 0 = sin definir (retrocompatible con productos antiguos).
   final double cantidadHabitual;
 
+  /// ¿Entra este producto en la compra actual? Por defecto sí.
+  /// Si se desmarca, en la lista aparece tachado y no cuenta en los totales.
+  final bool enLista;
+
   final String? notas;
 
   Producto({
@@ -44,6 +48,7 @@ class Producto {
     this.categoria = 'General',
     this.unidadBase = UnidadBase.kg,
     this.cantidadHabitual = 0,
+    this.enLista = true,
     this.notas,
   });
 
@@ -55,6 +60,7 @@ class Producto {
       categoria: d['categoria'] ?? 'General',
       unidadBase: UnidadBaseX.fromString(d['unidadBase']),
       cantidadHabitual: (d['cantidadHabitual'] ?? 0).toDouble(),
+      enLista: d['enLista'] ?? true,
       notas: d['notas'],
     );
   }
@@ -65,6 +71,7 @@ class Producto {
         'categoria': categoria,
         'unidadBase': unidadBase.name,
         'cantidadHabitual': cantidadHabitual,
+        'enLista': enLista,
         'notas': notas,
         'actualizado': FieldValue.serverTimestamp(),
       };

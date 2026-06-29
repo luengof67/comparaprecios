@@ -80,6 +80,20 @@ class ListaCompraScreen extends StatelessWidget {
                 final totalProductos =
                     porProveedor.values.fold<int>(0, (s, l) => s + l.length);
 
+                // --- Calculos en euros (solo productos en lista y con cantidad > 0) ---
+                double costeOptimo = 0; // comprando cada uno al mas barato
+                double ahorroReal = 0;  // frente a comprarlo todo al mas caro
+                int conCantidad = 0;
+                for (final c in comparativas) {
+                  if (!c.tieneDatos) continue;
+                  if (!c.producto.enLista) continue;
+                  final cant = c.producto.cantidadHabitual;
+                  if (cant <= 0) continue;
+                  conCantidad++;
+                  costeOptimo += c.precioMin * cant;
+                  ahorroReal += (c.precioMax - c.precioMin) * cant;
+                }
+
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
                   children: [
@@ -87,16 +101,57 @@ class ListaCompraScreen extends StatelessWidget {
                       color: Theme.of(context).colorScheme.secondaryContainer,
                       child: Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.shopping_cart_checkout, size: 32),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Comprando al más barato cada producto:\n'
-                                '$totalProductos productos repartidos en ${porProveedor.length} proveedores.',
-                              ),
+                            Row(
+                              children: [
+                                const Icon(Icons.shopping_cart_checkout, size: 32),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '$totalProductos productos repartidos en '
+                                    '${porProveedor.length} proveedores.',
+                                  ),
+                                ),
+                              ],
                             ),
+                            if (conCantidad > 0) ...[
+                              const Divider(height: 24),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Coste de la compra'),
+                                  Text(euros(costeOptimo),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18)),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Ahorro vs comprar al más caro'),
+                                  Text('-${euros(ahorroReal)}',
+                                      style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18)),
+                                ],
+                              ),
+                            ] else
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Pon la "cantidad que sueles comprar" en tus '
+                                  'productos para ver el coste y el ahorro en euros.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.black54),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -110,6 +165,7 @@ class ListaCompraScreen extends StatelessWidget {
                       return _BloqueProveedor(
                         proveedor: prov,
                         items: items,
+                        db: db,
                       );
                     }),
                   ],
@@ -126,11 +182,25 @@ class ListaCompraScreen extends StatelessWidget {
 class _BloqueProveedor extends StatelessWidget {
   final Proveedor? proveedor;
   final List<ComparativaProducto> items;
-  const _BloqueProveedor({required this.proveedor, required this.items});
+  final FirestoreService db;
+  const _BloqueProveedor({
+    required this.proveedor,
+    required this.items,
+    required this.db,
+  });
 
   @override
   Widget build(BuildContext context) {
     final color = proveedor != null ? Color(proveedor!.color) : Colors.grey;
+    // Subtotal del proveedor (solo lo que esta en lista y tiene cantidad).
+    double subtotal = 0;
+    for (final c in items) {
+      final cant = c.producto.cantidadHabitual;
+      if (c.producto.enLista && cant > 0) {
+        subtotal += c.masBarato!.precioUnitario * cant;
+      }
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -148,31 +218,58 @@ class _BloqueProveedor extends StatelessWidget {
               children: [
                 CircleAvatar(backgroundColor: color, radius: 10),
                 const SizedBox(width: 10),
-                Text(
-                  proveedor?.nombre ?? 'Proveedor borrado',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16),
+                Expanded(
+                  child: Text(
+                    proveedor?.nombre ?? 'Proveedor borrado',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
                 ),
-                const Spacer(),
-                Text('${items.length} ${items.length == 1 ? "producto" : "productos"}',
-                    style: const TextStyle(color: Colors.grey)),
+                if (subtotal > 0)
+                  Text(euros(subtotal),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16))
+                else
+                  Text('${items.length} ${items.length == 1 ? "producto" : "productos"}',
+                      style: const TextStyle(color: Colors.grey)),
               ],
             ),
           ),
           ...items.map((c) {
             final o = c.masBarato!;
+            final cant = c.producto.cantidadHabitual;
+            final unidad = c.producto.unidadBase.nombre;
+            final activo = c.producto.enLista;
+            final estiloTitulo = TextStyle(
+              decoration: activo ? null : TextDecoration.lineThrough,
+              color: activo ? null : Colors.grey,
+            );
             return ListTile(
               dense: true,
-              leading: const Icon(Icons.check_box_outline_blank, size: 20),
-              title: Text(c.producto.nombre),
-              trailing: Text(
-                '${euros3(o.precioUnitario)}/${c.producto.unidadBase.nombre}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+              leading: Checkbox(
+                value: activo,
+                onChanged: (v) => db.setEnLista(c.producto.id, v ?? true),
               ),
+              title: Text(c.producto.nombre, style: estiloTitulo),
+              subtitle: cant > 0
+                  ? Text(
+                      '${_num(cant)} $unidad × ${euros3(o.precioUnitario)}/$unidad',
+                      style: TextStyle(color: activo ? null : Colors.grey))
+                  : Text('${euros3(o.precioUnitario)}/$unidad · sin cantidad',
+                      style: TextStyle(color: activo ? null : Colors.grey)),
+              trailing: (activo && cant > 0)
+                  ? Text(
+                      euros(o.precioUnitario * cant),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                    )
+                  : null,
             );
           }),
         ],
       ),
     );
   }
+
+  String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 }
