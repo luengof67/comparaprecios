@@ -97,6 +97,26 @@ class ListaCompraScreen extends StatelessWidget {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
                   children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.done_all, size: 18),
+                            label: const Text('Marcar todo'),
+                            onPressed: () => db.setEnListaTodos(true),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.remove_done, size: 18),
+                            label: const Text('Quitar todo'),
+                            onPressed: () => db.setEnListaTodos(false),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Card(
                       color: Theme.of(context).colorScheme.secondaryContainer,
                       child: Padding(

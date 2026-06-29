@@ -53,6 +53,16 @@ class FirestoreService {
   Future<void> setEnLista(String id, bool valor) =>
       _productos.doc(id).update({'enLista': valor});
 
+  /// Marca o desmarca TODOS los productos de golpe (de forma eficiente).
+  Future<void> setEnListaTodos(bool valor) async {
+    final snap = await _productos.get();
+    final batch = _db.batch();
+    for (final doc in snap.docs) {
+      batch.update(doc.reference, {'enLista': valor});
+    }
+    await batch.commit();
+  }
+
   // ---- PRECIOS ----
   /// Todos los precios (para calcular el dashboard global).
   Stream<List<Precio>> precios() => _precios
