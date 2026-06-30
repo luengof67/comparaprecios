@@ -154,7 +154,29 @@ class _Comparativa extends StatelessWidget {
               title: Text(o.proveedor.nombre,
                   style: TextStyle(
                       fontWeight: esMejor ? FontWeight.bold : FontWeight.normal)),
-              subtitle: Text('actualizado ${fechaCorta(o.fecha)}'),
+              subtitle: Row(
+                children: [
+                  Text('actualizado ${fechaCorta(o.fecha)}'),
+                  if (o.variacion != null && o.variacion!.abs() > 0.005) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      o.variacion! > 0
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
+                      size: 13,
+                      color: o.variacion! > 0 ? Colors.red : Colors.green,
+                    ),
+                    Text(
+                      '${(o.variacion!.abs() * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: o.variacion! > 0 ? Colors.red : Colors.green,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,

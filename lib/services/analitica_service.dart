@@ -33,6 +33,8 @@ class AnaliticaService {
           proveedor: prov,
           precioUnitario: precio.precioUnitario,
           fecha: precio.fecha,
+          variacion: _variacionVsUltimaCompra(
+              preciosDelProducto, provId, precio),
         ));
       }
     });
@@ -44,6 +46,32 @@ class AnaliticaService {
       ofertas: ofertas,
       historico: preciosDelProducto,
     );
+  }
+
+  /// Variacion del precio [actual] respecto a la ultima COMPRA registrada a ese
+  /// proveedor (anterior al precio actual). Si no hay compra previa, usa el
+  /// registro inmediatamente anterior de ese proveedor. null si no hay con que
+  /// comparar.
+  static double? _variacionVsUltimaCompra(
+    List<Precio> todos,
+    String provId,
+    Precio actual,
+  ) {
+    // Registros de ese proveedor, anteriores al actual, mas nuevos primero.
+    final previos = todos
+        .where((p) =>
+            p.proveedorId == provId && p.fecha.isBefore(actual.fecha))
+        .toList()
+      ..sort((a, b) => b.fecha.compareTo(a.fecha));
+    if (previos.isEmpty) return null;
+
+    // Preferimos la ultima COMPRA; si no hay, el registro anterior cualquiera.
+    final ref = previos.firstWhere(
+      (p) => p.fuente == FuentePrecio.compra,
+      orElse: () => previos.first,
+    );
+    if (ref.precioUnitario <= 0) return null;
+    return (actual.precioUnitario - ref.precioUnitario) / ref.precioUnitario;
   }
 
   /// Calcula la comparativa de todos los productos de golpe.

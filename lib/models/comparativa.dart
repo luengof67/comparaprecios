@@ -8,10 +8,15 @@ class OfertaProveedor {
   final double precioUnitario;
   final DateTime fecha;
 
+  /// Variacion respecto a la ultima compra a ese proveedor (fraccion).
+  /// +0.10 = ha subido un 10%. null = sin referencia para comparar.
+  final double? variacion;
+
   OfertaProveedor({
     required this.proveedor,
     required this.precioUnitario,
     required this.fecha,
+    this.variacion,
   });
 }
 

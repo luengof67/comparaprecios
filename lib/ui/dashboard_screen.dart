@@ -54,6 +54,16 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     _Metricas(resumen: resumen),
                     const SizedBox(height: 24),
+                    _SubidasRecientes(
+                      comparativas: comparativas,
+                      onTap: (prod) => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ProductoDetalleScreen(db: db, producto: prod),
+                        ),
+                      ),
+                    ),
                     Text('Dónde ahorras más',
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
@@ -286,6 +296,64 @@ class _Vacio extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Seccion del dashboard con las subidas de precio recientes (vs ultima compra).
+class _SubidasRecientes extends StatelessWidget {
+  final List<ComparativaProducto> comparativas;
+  final void Function(Producto) onTap;
+  const _SubidasRecientes({required this.comparativas, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    // Recolecta subidas (variacion > 0.5%).
+    final subidas = <({Producto producto, OfertaProveedor oferta})>[];
+    for (final c in comparativas) {
+      for (final o in c.ofertas) {
+        if (o.variacion != null && o.variacion! > 0.005) {
+          subidas.add((producto: c.producto, oferta: o));
+        }
+      }
+    }
+    if (subidas.isEmpty) return const SizedBox.shrink();
+
+    subidas.sort((a, b) => b.oferta.variacion!.compareTo(a.oferta.variacion!));
+    final top = subidas.take(5).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.trending_up, color: Colors.red, size: 20),
+            const SizedBox(width: 6),
+            Text('Subidas recientes',
+                style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...top.map((s) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.arrow_upward, color: Colors.red),
+                title: Text(s.producto.nombre,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                    '${s.oferta.proveedor.nombre} · ahora ${euros3(s.oferta.precioUnitario)}/${s.producto.unidadBase.nombre}'),
+                trailing: Text(
+                  '+${(s.oferta.variacion! * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
+                ),
+                onTap: () => onTap(s.producto),
+              ),
+            )),
+        const SizedBox(height: 24),
+      ],
     );
   }
 }
