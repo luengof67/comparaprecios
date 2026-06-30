@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/comparativa.dart';
 import '../models/precio.dart';
@@ -245,6 +246,11 @@ class _BloqueProveedor extends StatelessWidget {
                         fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
+                IconButton(
+                  tooltip: 'Enviar pedido por WhatsApp',
+                  icon: const Icon(Icons.send, color: Color(0xFF25D366)),
+                  onPressed: () => _enviarWhatsApp(context),
+                ),
                 if (subtotal > 0)
                   Text(euros(subtotal),
                       style: const TextStyle(
@@ -293,6 +299,57 @@ class _BloqueProveedor extends StatelessWidget {
   }
 
   String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+
+  /// Construye el texto del pedido (solo productos marcados) y abre WhatsApp.
+  Future<void> _enviarWhatsApp(BuildContext context) async {
+    final nombre = proveedor?.nombre ?? 'Proveedor';
+    final marcados = items.where((c) => c.producto.enLista).toList()
+      ..sort((a, b) => a.producto.nombre.compareTo(b.producto.nombre));
+
+    if (marcados.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay productos marcados para este proveedor.')),
+      );
+      return;
+    }
+
+    final buffer = StringBuffer('*Pedido - $nombre*\n');
+    for (final c in marcados) {
+      final cant = c.producto.cantidadHabitual;
+      final unidad = c.producto.unidadBase.nombre;
+      if (cant > 0) {
+        buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} $unidad');
+      } else {
+        buffer.writeln('- ${c.producto.nombre}');
+      }
+    }
+
+    final texto = Uri.encodeComponent(buffer.toString());
+
+    // Si el proveedor tiene telefono, abrimos su chat directo; si no, elige contacto.
+    final tel = _telefono(proveedor?.contacto);
+    final url = tel != null
+        ? 'https://wa.me/$tel?text=$texto'
+        : 'https://wa.me/?text=$texto';
+
+    final ok = await launchUrl(Uri.parse(url),
+        mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir WhatsApp.')),
+      );
+    }
+  }
+
+  /// Normaliza el contacto a numero internacional (heuristica para España).
+  String? _telefono(String? contacto) {
+    if (contacto == null) return null;
+    final digitos = contacto.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digitos.length < 9) return null;
+    // Si son 9 digitos (movil/fijo español), anteponemos 34.
+    if (digitos.length == 9) return '34$digitos';
+    return digitos; // ya trae prefijo de pais
+  }
 
   void _editarCantidad(BuildContext context, Producto producto, String unidad) {
     final ctrl = TextEditingController(
