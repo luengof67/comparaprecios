@@ -20,8 +20,19 @@ dependencies:
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
   flutter_test:
     sdk: flutter
+
+flutter_native_splash:
+  color: "#1B5E20"
+  image: assets/icono.png
+  android_12:
+    color: "#1B5E20"
+    image: assets/icono.png
+  android: true
+  ios: false
+  web: false
 
 flutter_launcher_icons:
   android: true
