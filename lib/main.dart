@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -8,6 +9,7 @@ import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
 import 'ui/informes_screen.dart';
 import 'ui/lista_compra_screen.dart';
+import 'ui/login_screen.dart';
 import 'ui/productos_screen.dart';
 import 'ui/proveedores_screen.dart';
 
@@ -30,7 +32,29 @@ class ComparaPreciosApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF2E7D32),
         useMaterial3: true,
       ),
-      home: const RaizScreen(),
+      home: const _Portero(),
+    );
+  }
+}
+
+/// Decide qué mostrar según haya sesión o no:
+/// - sin sesión → pantalla de login
+/// - con sesión → la app
+class _Portero extends StatelessWidget {
+  const _Portero();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        if (snap.hasData) return const RaizScreen();
+        return const LoginScreen();
+      },
     );
   }
 }
@@ -74,6 +98,23 @@ class _RaizScreenState extends State<RaizScreen> {
               context,
               MaterialPageRoute(builder: (_) => InformesScreen(db: _db)),
             ),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'salir') FirebaseAuth.instance.signOut();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'salir',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 20),
+                    SizedBox(width: 8),
+                    Text('Cerrar sesión'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
