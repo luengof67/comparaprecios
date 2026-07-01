@@ -20,7 +20,6 @@ class ComparadorScreen extends StatefulWidget {
 
 class _ComparadorScreenState extends State<ComparadorScreen> {
   final Set<String> _seleccionados = {};
-  bool _iniciado = false;
 
   @override
   Widget build(BuildContext context) {
@@ -57,11 +56,8 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
                     );
                   }
 
-                  // Por defecto, todos seleccionados la primera vez.
-                  if (!_iniciado) {
-                    _seleccionados.addAll(proveedores.map((p) => p.id));
-                    _iniciado = true;
-                  }
+                  // Por defecto no hay ninguno marcado: el usuario elige los
+                  // proveedores concretos que quiere comparar.
 
                   final comparativas = AnaliticaService.compararTodo(
                       productos, precios, proveedores);
@@ -124,16 +120,19 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
                       if (elegidos.length < 2)
                         const Padding(
                           padding: EdgeInsets.all(24),
-                          child: Text('Selecciona al menos dos proveedores.',
+                          child: Text(
+                              'Toca dos o más proveedores arriba para compararlos.',
                               style: TextStyle(color: Colors.grey)),
                         )
                       else if (filas.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
                           child: Text(
-                            'No hay productos que tengan precio en TODOS los '
-                            'proveedores elegidos. Prueba con menos proveedores.',
-                            style: TextStyle(color: Colors.grey),
+                            'Los proveedores elegidos no comparten ningún producto '
+                            'con precio. Para compararlos, registra precios de un '
+                            'mismo producto en cada uno de ellos '
+                            '(o elige otros proveedores).',
+                            style: TextStyle(color: Colors.grey.shade700),
                           ),
                         )
                       else
