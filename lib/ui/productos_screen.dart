@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/producto.dart';
 import '../services/firestore_service.dart';
+import 'categorias.dart';
 import 'producto_detalle_screen.dart';
 
 class ProductosScreen extends StatelessWidget {
@@ -35,9 +36,13 @@ class ProductosScreen extends StatelessWidget {
             itemBuilder: (_, i) {
               final p = productos[i];
               return ListTile(
-                leading: CircleAvatar(child: Text(p.unidadBase.nombre)),
+                leading: CircleAvatar(
+                  backgroundColor: colorCategoria(p.categoria).withValues(alpha: 0.15),
+                  child: Icon(iconoCategoria(p.categoria),
+                      color: colorCategoria(p.categoria)),
+                ),
                 title: Text(p.nombre),
-                subtitle: Text(p.categoria),
+                subtitle: Text('${p.categoria} · ${p.unidadBase.etiqueta}'),
                 trailing: IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: () => _editar(context, p),
@@ -76,7 +81,7 @@ class _ProductoForm extends StatefulWidget {
 
 class _ProductoFormState extends State<_ProductoForm> {
   late final TextEditingController _nombre;
-  late final TextEditingController _categoria;
+  late String _categoria;
   late final TextEditingController _cantidad;
   late UnidadBase _unidad;
 
@@ -84,7 +89,7 @@ class _ProductoFormState extends State<_ProductoForm> {
   void initState() {
     super.initState();
     _nombre = TextEditingController(text: widget.existente?.nombre ?? '');
-    _categoria = TextEditingController(text: widget.existente?.categoria ?? 'General');
+    _categoria = categoriaValida(widget.existente?.categoria);
     final ch = widget.existente?.cantidadHabitual ?? 0;
     _cantidad = TextEditingController(text: ch > 0 ? _num(ch) : '');
     _unidad = widget.existente?.unidadBase ?? UnidadBase.kg;
@@ -95,7 +100,6 @@ class _ProductoFormState extends State<_ProductoForm> {
   @override
   void dispose() {
     _nombre.dispose();
-    _categoria.dispose();
     _cantidad.dispose();
     super.dispose();
   }
@@ -107,7 +111,7 @@ class _ProductoFormState extends State<_ProductoForm> {
     await widget.db.guardarProducto(Producto(
       id: widget.existente?.id ?? '',
       nombre: _nombre.text.trim(),
-      categoria: _categoria.text.trim().isEmpty ? 'General' : _categoria.text.trim(),
+      categoria: _categoria,
       unidadBase: _unidad,
       cantidadHabitual: cantidad,
     ));
@@ -161,10 +165,24 @@ class _ProductoFormState extends State<_ProductoForm> {
                 labelText: 'Nombre', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _categoria,
+          DropdownButtonFormField<String>(
+            initialValue: _categoria,
             decoration: const InputDecoration(
                 labelText: 'Categoría', border: OutlineInputBorder()),
+            items: categorias
+                .map((c) => DropdownMenuItem(
+                      value: c,
+                      child: Row(
+                        children: [
+                          Icon(iconoCategoria(c),
+                              size: 20, color: colorCategoria(c)),
+                          const SizedBox(width: 10),
+                          Text(c),
+                        ],
+                      ),
+                    ))
+                .toList(),
+            onChanged: (v) => setState(() => _categoria = v ?? 'General'),
           ),
           const SizedBox(height: 12),
           const Text('Comparar precio por:'),
