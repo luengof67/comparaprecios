@@ -114,6 +114,31 @@ class _ProductoFormState extends State<_ProductoForm> {
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _confirmarBorrado() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Borrar producto'),
+        content: Text('¿Seguro que quieres borrar "${widget.existente!.nombre}"?\n\n'
+            'Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await widget.db.borrarProducto(widget.existente!.id);
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -170,10 +195,7 @@ class _ProductoFormState extends State<_ProductoForm> {
                 TextButton.icon(
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
                   label: const Text('Borrar', style: TextStyle(color: Colors.red)),
-                  onPressed: () async {
-                    await widget.db.borrarProducto(widget.existente!.id);
-                    if (mounted) Navigator.pop(context);
-                  },
+                  onPressed: _confirmarBorrado,
                 ),
               const Spacer(),
               FilledButton(onPressed: _guardar, child: const Text('Guardar')),
