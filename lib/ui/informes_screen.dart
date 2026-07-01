@@ -9,6 +9,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
+import 'comparador_screen.dart';
 import 'formato.dart';
 
 class InformesScreen extends StatefulWidget {
@@ -32,7 +33,20 @@ class _InformesScreenState extends State<InformesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Informes')),
+      appBar: AppBar(
+        title: const Text('Informes'),
+        actions: [
+          IconButton(
+            tooltip: 'Comparar proveedores',
+            icon: const Icon(Icons.compare_arrows),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ComparadorScreen(db: widget.db)),
+            ),
+          ),
+        ],
+      ),
       body: StreamBuilder<List<Compra>>(
         stream: widget.db.compras(),
         builder: (context, snapC) {
