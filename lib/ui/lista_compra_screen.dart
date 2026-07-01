@@ -88,7 +88,7 @@ class ListaCompraScreen extends StatelessWidget {
                 for (final c in comparativas) {
                   if (!c.tieneDatos) continue;
                   if (!c.producto.enLista) continue;
-                  final cant = c.producto.cantidadHabitual;
+                  final cant = c.producto.cantidadEfectiva;
                   if (cant <= 0) continue;
                   conCantidad++;
                   costeOptimo += c.precioMin * cant;
@@ -116,6 +116,15 @@ class ListaCompraScreen extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.restart_alt, size: 18),
+                        label: const Text('Reiniciar semana (usar cantidades habituales)'),
+                        onPressed: () => _confirmarReinicio(context, db),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Card(
@@ -198,6 +207,28 @@ class ListaCompraScreen extends StatelessWidget {
       },
     );
   }
+
+  Future<void> _confirmarReinicio(BuildContext context, FirestoreService db) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reiniciar semana'),
+        content: const Text(
+            'Se copiará la cantidad habitual de cada producto a la cantidad de '
+            'esta semana. Perderás los ajustes semanales que hayas hecho.\n\n'
+            '¿Continuar?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reiniciar')),
+        ],
+      ),
+    );
+    if (ok == true) await db.reiniciarSemana();
+  }
 }
 
 class _BloqueProveedor extends StatelessWidget {
@@ -216,7 +247,7 @@ class _BloqueProveedor extends StatelessWidget {
     // Subtotal del proveedor (solo lo que esta en lista y tiene cantidad).
     double subtotal = 0;
     for (final c in items) {
-      final cant = c.producto.cantidadHabitual;
+      final cant = c.producto.cantidadEfectiva;
       if (c.producto.enLista && cant > 0) {
         subtotal += c.masBarato!.precioUnitario * cant;
       }
@@ -263,7 +294,7 @@ class _BloqueProveedor extends StatelessWidget {
           ),
           ...items.map((c) {
             final o = c.masBarato!;
-            final cant = c.producto.cantidadHabitual;
+            final cant = c.producto.cantidadEfectiva;
             final unidad = c.producto.unidadBase.nombre;
             final activo = c.producto.enLista;
             final estiloTitulo = TextStyle(
@@ -315,7 +346,7 @@ class _BloqueProveedor extends StatelessWidget {
 
     final buffer = StringBuffer('*Pedido - $nombre*\n');
     for (final c in marcados) {
-      final cant = c.producto.cantidadHabitual;
+      final cant = c.producto.cantidadEfectiva;
       final unidad = c.producto.unidadBase.nombre;
       if (cant > 0) {
         buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} $unidad');
@@ -353,20 +384,29 @@ class _BloqueProveedor extends StatelessWidget {
 
   void _editarCantidad(BuildContext context, Producto producto, String unidad) {
     final ctrl = TextEditingController(
-      text: producto.cantidadHabitual > 0 ? _num(producto.cantidadHabitual) : '',
+      text: producto.cantidadEfectiva > 0 ? _num(producto.cantidadEfectiva) : '',
     );
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(producto.nombre),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Cantidad a comprar ($unidad)',
-            border: const OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Cantidad esta semana ($unidad)',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Habitual: ${_num(producto.cantidadHabitual)} $unidad',
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
         ),
         actions: [
           TextButton(
@@ -376,7 +416,7 @@ class _BloqueProveedor extends StatelessWidget {
           FilledButton(
             onPressed: () {
               final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.')) ?? 0;
-              db.setCantidad(producto.id, v);
+              db.setCantidadSemana(producto.id, v);
               Navigator.pop(ctx);
             },
             child: const Text('Guardar'),

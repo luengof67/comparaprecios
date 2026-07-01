@@ -54,6 +54,22 @@ class FirestoreService {
   Future<void> setCantidad(String id, double cantidad) =>
       _productos.doc(id).update({'cantidadHabitual': cantidad});
 
+  /// Actualiza solo la cantidad de esta semana de un producto.
+  Future<void> setCantidadSemana(String id, double cantidad) =>
+      _productos.doc(id).update({'cantidadSemana': cantidad});
+
+  /// Reinicia la semana: copia la cantidad habitual a la de semana en todos.
+  Future<void> reiniciarSemana() async {
+    final snap = await _productos.get();
+    final batch = _db.batch();
+    for (final doc in snap.docs) {
+      final d = doc.data() as Map<String, dynamic>;
+      final habitual = (d['cantidadHabitual'] ?? 0).toDouble();
+      batch.update(doc.reference, {'cantidadSemana': habitual});
+    }
+    await batch.commit();
+  }
+
   /// Marca o desmarca un producto de la compra actual (solo ese campo).
   Future<void> setEnLista(String id, bool valor) =>
       _productos.doc(id).update({'enLista': valor});
