@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/producto.dart';
+import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
 import 'categorias.dart';
 import 'producto_detalle_screen.dart';
@@ -84,6 +85,7 @@ class _ProductoFormState extends State<_ProductoForm> {
   late String _categoria;
   late final TextEditingController _cantidad;
   late UnidadBase _unidad;
+  late List<AliasProducto> _alias;
 
   @override
   void initState() {
@@ -93,6 +95,7 @@ class _ProductoFormState extends State<_ProductoForm> {
     final ch = widget.existente?.cantidadHabitual ?? 0;
     _cantidad = TextEditingController(text: ch > 0 ? _num(ch) : '');
     _unidad = widget.existente?.unidadBase ?? UnidadBase.kg;
+    _alias = List<AliasProducto>.from(widget.existente?.alias ?? const []);
   }
 
   String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
@@ -108,12 +111,18 @@ class _ProductoFormState extends State<_ProductoForm> {
     if (_nombre.text.trim().isEmpty) return;
     final cantidad =
         double.tryParse(_cantidad.text.trim().replaceAll(',', '.')) ?? 0;
+    final base = widget.existente;
     await widget.db.guardarProducto(Producto(
-      id: widget.existente?.id ?? '',
+      id: base?.id ?? '',
       nombre: _nombre.text.trim(),
       categoria: _categoria,
       unidadBase: _unidad,
       cantidadHabitual: cantidad,
+      // Conservamos lo que no edita este formulario:
+      cantidadSemana: base?.cantidadSemana ?? 0,
+      enLista: base?.enLista ?? true,
+      alias: _alias,
+      notas: base?.notas,
     ));
     if (mounted) Navigator.pop(context);
   }
@@ -207,6 +216,62 @@ class _ProductoFormState extends State<_ProductoForm> {
             ),
           ),
           const SizedBox(height: 16),
+          const Divider(),
+          Row(
+            children: [
+              const Icon(Icons.sell_outlined, size: 18),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('Nombres alternativos (alias)',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Añadir'),
+                onPressed: _agregarAlias,
+              ),
+            ],
+          ),
+          const Text(
+            'Cómo llaman los proveedores a este producto. Se usan para reconocer '
+            'las líneas al escanear albaranes.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          if (_alias.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Sin alias todavía.',
+                  style: TextStyle(color: Colors.grey)),
+            )
+          else
+            StreamBuilder<List<Proveedor>>(
+              stream: widget.db.proveedores(),
+              builder: (context, snap) {
+                final provs = {for (final p in (snap.data ?? [])) p.id: p.nombre};
+                return Column(
+                  children: _alias.asMap().entries.map((e) {
+                    final i = e.key;
+                    final a = e.value;
+                    final prov = a.proveedorId != null
+                        ? (provs[a.proveedorId] ?? 'proveedor')
+                        : 'todos';
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(a.texto),
+                      subtitle: Text(prov,
+                          style: const TextStyle(fontSize: 12)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => setState(() => _alias.removeAt(i)),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          const SizedBox(height: 8),
           Row(
             children: [
               if (widget.existente != null)
@@ -220,6 +285,69 @@ class _ProductoFormState extends State<_ProductoForm> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _agregarAlias() {
+    final textoCtrl = TextEditingController();
+    String? provId;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Nuevo alias'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: textoCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre tal como aparece',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              StreamBuilder<List<Proveedor>>(
+                stream: widget.db.proveedores(),
+                builder: (context, snap) {
+                  final provs = snap.data ?? [];
+                  return DropdownButtonFormField<String>(
+                    initialValue: provId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Proveedor (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('Cualquiera')),
+                      ...provs.map((p) => DropdownMenuItem(
+                          value: p.id, child: Text(p.nombre))),
+                    ],
+                    onChanged: (v) => setLocal(() => provId = v),
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () {
+                final t = textoCtrl.text.trim();
+                if (t.isEmpty) return;
+                setState(() => _alias.add(
+                    AliasProducto(texto: t, proveedorId: provId)));
+                Navigator.pop(ctx);
+              },
+              child: const Text('Añadir'),
+            ),
+          ],
+        ),
       ),
     );
   }
