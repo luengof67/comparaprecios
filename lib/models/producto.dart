@@ -23,6 +23,26 @@ extension UnidadBaseX on UnidadBase {
       };
 }
 
+/// Un nombre alternativo con el que un proveedor concreto denomina el producto.
+/// Ej: proveedor "Makro" lo llama "TOMATE PERA CAJA 6KG 1ª".
+class AliasProducto {
+  final String texto; // el nombre tal como aparece en el albarán
+  final String? proveedorId; // de qué proveedor viene (null = general)
+
+  AliasProducto({required this.texto, this.proveedorId});
+
+  factory AliasProducto.fromMap(Map<String, dynamic> d) => AliasProducto(
+        texto: (d['texto'] ?? '').toString(),
+        proveedorId: d['proveedorId']?.toString(),
+      );
+
+  Map<String, dynamic> toMap() => {
+        'texto': texto,
+        'textoLower': texto.toLowerCase().trim(),
+        'proveedorId': proveedorId,
+      };
+}
+
 /// Un producto que compras (ej. "Tomate pera", "Aceite de oliva virgen extra").
 /// Tu lo creas una vez y le vas asociando precios de distintos proveedores.
 class Producto {
@@ -48,6 +68,10 @@ class Producto {
   /// Si se desmarca, en la lista aparece tachado y no cuenta en los totales.
   final bool enLista;
 
+  /// Nombres alternativos con que los proveedores denominan este producto.
+  /// Se usan para reconocer líneas de albarán automáticamente.
+  final List<AliasProducto> alias;
+
   final String? notas;
 
   Producto({
@@ -58,11 +82,13 @@ class Producto {
     this.cantidadHabitual = 0,
     this.cantidadSemana = 0,
     this.enLista = true,
+    this.alias = const [],
     this.notas,
   });
 
   factory Producto.fromDoc(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final rawAlias = (d['alias'] as List?) ?? const [];
     return Producto(
       id: doc.id,
       nombre: d['nombre'] ?? '',
@@ -71,6 +97,9 @@ class Producto {
       cantidadHabitual: (d['cantidadHabitual'] ?? 0).toDouble(),
       cantidadSemana: (d['cantidadSemana'] ?? 0).toDouble(),
       enLista: d['enLista'] ?? true,
+      alias: rawAlias
+          .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
       notas: d['notas'],
     );
   }
@@ -83,6 +112,7 @@ class Producto {
         'cantidadHabitual': cantidadHabitual,
         'cantidadSemana': cantidadSemana,
         'enLista': enLista,
+        'alias': alias.map((a) => a.toMap()).toList(),
         'notas': notas,
         'actualizado': FieldValue.serverTimestamp(),
       };

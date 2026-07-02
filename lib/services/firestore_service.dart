@@ -50,6 +50,18 @@ class FirestoreService {
 
   Future<void> borrarProducto(String id) => _productos.doc(id).delete();
 
+  /// Aprende un alias nuevo para un producto (lo añade a su lista).
+  Future<void> agregarAlias(String productoId, AliasProducto alias) =>
+      _productos.doc(productoId).update({
+        'alias': FieldValue.arrayUnion([alias.toMap()]),
+      });
+
+  /// Reemplaza toda la lista de alias de un producto (gestión manual).
+  Future<void> setAlias(String productoId, List<AliasProducto> alias) =>
+      _productos.doc(productoId).update({
+        'alias': alias.map((a) => a.toMap()).toList(),
+      });
+
   /// Actualiza solo la cantidad habitual de un producto.
   Future<void> setCantidad(String id, double cantidad) =>
       _productos.doc(id).update({'cantidadHabitual': cantidad});
