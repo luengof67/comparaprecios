@@ -5,6 +5,7 @@ import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
+import 'escaner_screen.dart';
 import 'formato.dart';
 
 class ComprasScreen extends StatelessWidget {
@@ -14,13 +15,30 @@ class ComprasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => NuevaCompraScreen(db: db)),
-        ),
-        icon: const Icon(Icons.add_shopping_cart),
-        label: const Text('Nueva compra'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'escanear',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const EscanerScreen()),
+            ),
+            icon: const Icon(Icons.document_scanner),
+            label: const Text('Escanear albarán'),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'nuevacompra',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => NuevaCompraScreen(db: db)),
+            ),
+            icon: const Icon(Icons.add_shopping_cart),
+            label: const Text('Nueva compra'),
+          ),
+        ],
       ),
       body: StreamBuilder<List<Compra>>(
         stream: db.compras(),
