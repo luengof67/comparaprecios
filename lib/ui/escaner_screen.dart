@@ -3,10 +3,13 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/linea_albaran.dart';
 import '../services/albaran_service.dart';
+import '../services/firestore_service.dart';
 import 'formato.dart';
+import 'revision_albaran_screen.dart';
 
 class EscanerScreen extends StatefulWidget {
-  const EscanerScreen({super.key});
+  final FirestoreService db;
+  const EscanerScreen({super.key, required this.db});
 
   @override
   State<EscanerScreen> createState() => _EscanerScreenState();
@@ -112,11 +115,19 @@ class _EscanerScreenState extends State<EscanerScreen> {
                     ].join(' · ')),
                   ),
                 )),
-            const SizedBox(height: 8),
-            const Text(
-              'De momento esto solo muestra lo leído. El siguiente paso será '
-              'casar cada línea con tus productos y guardar la compra.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RevisionAlbaranScreen(
+                    db: widget.db,
+                    resultado: _resultado!,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.playlist_add_check),
+              label: const Text('Revisar y casar productos'),
             ),
           ],
         ],

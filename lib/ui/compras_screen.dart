@@ -23,7 +23,7 @@ class ComprasScreen extends StatelessWidget {
             heroTag: 'escanear',
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const EscanerScreen()),
+              MaterialPageRoute(builder: (_) => EscanerScreen(db: db)),
             ),
             icon: const Icon(Icons.document_scanner),
             label: const Text('Escanear albarán'),
