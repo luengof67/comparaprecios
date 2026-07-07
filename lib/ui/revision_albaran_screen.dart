@@ -14,11 +14,13 @@ class _LineaEd {
   String? productoId;
   TipoCasado tipo;
   bool ignorar;
+  bool manual; // el usuario eligió producto a mano (no re-casar)
   final TextEditingController cantidad;
   final TextEditingController precio;
 
   _LineaEd(this.origen, this.tipo, this.productoId)
       : ignorar = false,
+        manual = false,
         cantidad = TextEditingController(
             text: origen.cantidad != null ? _n(origen.cantidad!) : ''),
         precio = TextEditingController(
@@ -71,15 +73,22 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
         }
       }
     }
-    _recalcular();
+    // Crea las líneas UNA vez (conserva controllers y elecciones).
+    _lineas.clear();
+    for (final l in widget.resultado.lineas) {
+      _lineas.add(_LineaEd(l, TipoCasado.sinCoincidencia, null));
+    }
+    _aplicarCasado();
     if (mounted) setState(() => _cargando = false);
   }
 
-  void _recalcular() {
-    _lineas.clear();
-    for (final l in widget.resultado.lineas) {
-      final c = CasadorService.casar(l.descripcion, _proveedorId, _productos);
-      _lineas.add(_LineaEd(l, c.tipo, c.producto?.id));
+  /// Aplica el casado a las líneas que el usuario no ha tocado a mano.
+  void _aplicarCasado() {
+    for (final le in _lineas) {
+      if (le.manual) continue;
+      final c = CasadorService.casar(le.origen.descripcion, _proveedorId, _productos);
+      le.tipo = c.tipo;
+      le.productoId = c.producto?.id;
     }
   }
 
@@ -98,14 +107,27 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
     final prov = _proveedores.firstWhere((p) => p.id == _proveedorId);
     final lineasCompra = <LineaCompra>[];
     final aprender = <MapEntry<String, AliasProducto>>[];
+    final incompletas = <String>[]; // descripciones de las que no se pueden guardar
 
     for (final le in _lineas) {
-      if (le.ignorar || le.productoId == null) continue;
+      if (le.ignorar) continue;
       final producto = _prod(le.productoId);
-      if (producto == null) continue;
       final cant = double.tryParse(le.cantidad.text.trim().replaceAll(',', '.'));
       final precio = double.tryParse(le.precio.text.trim().replaceAll(',', '.'));
-      if (cant == null || precio == null) continue;
+
+      // Motivo por el que una línea no es guardable.
+      if (producto == null) {
+        incompletas.add('${le.origen.descripcion} — sin producto asignado');
+        continue;
+      }
+      if (cant == null || cant <= 0) {
+        incompletas.add('${le.origen.descripcion} — falta la cantidad');
+        continue;
+      }
+      if (precio == null || precio <= 0) {
+        incompletas.add('${le.origen.descripcion} — falta el precio');
+        continue;
+      }
 
       lineasCompra.add(LineaCompra(
         productoId: producto.id,
@@ -115,8 +137,6 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
         precioUnitario: precio,
       ));
 
-      // Aprender alias si el texto del albarán no está ya como alias de este
-      // producto para este proveedor.
       final ya = producto.alias.any((a) =>
           a.texto.toLowerCase().trim() ==
           le.origen.descripcion.toLowerCase().trim());
@@ -128,18 +148,52 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
       }
     }
 
+    // Si hay líneas que no se pueden guardar, avisar y dejar decidir.
+    if (incompletas.isNotEmpty) {
+      final continuar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Líneas sin completar'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${lineasCompra.length} líneas listas para guardar.\n'
+                    'Estas ${incompletas.length} no se guardarán:'),
+                const SizedBox(height: 8),
+                ...incompletas.map((t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $t',
+                          style: const TextStyle(fontSize: 13, color: Colors.red)),
+                    )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Volver a revisar')),
+            if (lineasCompra.isNotEmpty)
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text('Guardar ${lineasCompra.length}')),
+          ],
+        ),
+      );
+      if (continuar != true) return;
+    }
+
     if (lineasCompra.isEmpty) {
-      _aviso('No hay líneas casadas para guardar.');
+      _aviso('No hay líneas completas para guardar.');
       return;
     }
 
     setState(() => _guardando = true);
     try {
-      // Aprender alias (uno por uno).
       for (final e in aprender) {
         await widget.db.agregarAlias(e.key, e.value);
       }
-      // Registrar la compra (crea también los precios).
       await widget.db.registrarCompra(Compra(
         id: '',
         proveedorId: prov.id,
@@ -200,7 +254,7 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
                 .toList(),
             onChanged: (v) => setState(() {
               _proveedorId = v;
-              _recalcular();
+              _aplicarCasado();
             }),
           ),
           const SizedBox(height: 8),
@@ -351,11 +405,13 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
       setState(() {
         le.productoId = nuevoId;
         le.tipo = TipoCasado.propuesto;
+        le.manual = true;
       });
     } else {
       setState(() {
         le.productoId = res;
         le.tipo = TipoCasado.propuesto;
+        le.manual = true;
       });
     }
   }

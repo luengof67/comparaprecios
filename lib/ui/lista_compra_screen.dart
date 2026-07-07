@@ -85,6 +85,9 @@ class ListaCompraScreen extends StatelessWidget {
                 double costeOptimo = 0; // comprando cada uno al mas barato
                 double ahorroReal = 0;  // frente a comprarlo todo al mas caro
                 int conCantidad = 0;
+                // Para el "todo en un solo proveedor":
+                final Map<String, double> totalPorProv = {};
+                final Map<String, int> coberturaPorProv = {};
                 for (final c in comparativas) {
                   if (!c.tieneDatos) continue;
                   if (!c.producto.enLista) continue;
@@ -93,7 +96,28 @@ class ListaCompraScreen extends StatelessWidget {
                   conCantidad++;
                   costeOptimo += c.precioMin * cant;
                   ahorroReal += (c.precioMax - c.precioMin) * cant;
+                  for (final o in c.ofertas) {
+                    totalPorProv[o.proveedor.id] =
+                        (totalPorProv[o.proveedor.id] ?? 0) +
+                            o.precioUnitario * cant;
+                    coberturaPorProv[o.proveedor.id] =
+                        (coberturaPorProv[o.proveedor.id] ?? 0) + 1;
+                  }
                 }
+                // Mejor proveedor único que tenga TODOS los productos de la lista.
+                String? mejorUnicoId;
+                double mejorUnicoTotal = 0;
+                totalPorProv.forEach((id, total) {
+                  if (coberturaPorProv[id] == conCantidad) {
+                    if (mejorUnicoId == null || total < mejorUnicoTotal) {
+                      mejorUnicoId = id;
+                      mejorUnicoTotal = total;
+                    }
+                  }
+                });
+                final mapaNombres = {for (final p in proveedores) p.id: p.nombre};
+                final ahorroVsUnico =
+                    mejorUnicoId != null ? mejorUnicoTotal - costeOptimo : null;
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
@@ -172,6 +196,43 @@ class ListaCompraScreen extends StatelessWidget {
                                           fontSize: 18)),
                                 ],
                               ),
+                              if (ahorroVsUnico != null) ...[
+                                const Divider(height: 20),
+                                Text(
+                                  'Si compraras todo en un solo proveedor, el más '
+                                  'barato sería ${mapaNombres[mejorUnicoId]} '
+                                  '(${euros(mejorUnicoTotal)}).',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Ahorro repartiendo la compra'),
+                                    Text(
+                                      ahorroVsUnico > 0.005
+                                          ? '-${euros(ahorroVsUnico)}'
+                                          : '—',
+                                      style: TextStyle(
+                                          color: ahorroVsUnico > 0.005
+                                              ? Colors.green
+                                              : Colors.grey,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16),
+                                    ),
+                                  ],
+                                ),
+                              ] else ...[
+                                const Divider(height: 20),
+                                const Text(
+                                  'Ningún proveedor tiene todos los productos de '
+                                  'la lista, así que repartir la compra es '
+                                  'obligado.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.black54),
+                                ),
+                              ],
                             ] else
                               const Padding(
                                 padding: EdgeInsets.only(top: 8),
