@@ -7,6 +7,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
+import '../services/informe_compra_service.dart';
 import 'formato.dart';
 
 /// Lista de la compra optima (Fase 1):
@@ -247,6 +248,24 @@ class ListaCompraScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    if (conCantidad > 0)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('Exportar PDF de la compra'),
+                          onPressed: () {
+                            final incluidas = comparativas
+                                .where((c) =>
+                                    c.tieneDatos &&
+                                    c.producto.enLista &&
+                                    c.producto.cantidadEfectiva > 0)
+                                .toList();
+                            InformeCompraService.generarPdf(incluidas);
+                          },
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     ...provIdsOrdenados.map((provId) {
                       final prov = mapaProv[provId];
