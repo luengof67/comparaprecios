@@ -3,7 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/comparativa.dart';
-import 'formato.dart';
+import '../ui/formato.dart';
 
 /// Una línea de la compra óptima: un producto asignado a su proveedor más barato.
 class LineaOptima {
