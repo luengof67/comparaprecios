@@ -87,6 +87,7 @@ class ProductoDetalleScreen extends StatelessWidget {
                       proveedor: proveedores.where((pr) => pr.id == p.proveedorId).firstOrNull,
                       unidad: producto.unidadBase.nombre,
                       onBorrar: () => db.borrarPrecio(p.id),
+                      onEditar: () => _editarPrecio(context, p),
                     ),
                   ),
                 ],
@@ -106,6 +107,15 @@ class ProductoDetalleScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       builder: (_) => _AltaPrecioSheet(db: db, producto: producto),
+    );
+  }
+
+  void _editarPrecio(BuildContext context, Precio precio) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) =>
+          _EditarPrecioSheet(db: db, producto: producto, precio: precio),
     );
   }
 }
@@ -348,17 +358,20 @@ class _FilaHistorico extends StatelessWidget {
   final Proveedor? proveedor;
   final String unidad;
   final VoidCallback onBorrar;
+  final VoidCallback onEditar;
   const _FilaHistorico({
     required this.precio,
     required this.proveedor,
     required this.unidad,
     required this.onBorrar,
+    required this.onEditar,
   });
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       dense: true,
+      onTap: onEditar,
       leading: Icon(
         precio.fuente == FuentePrecio.albaran ? Icons.receipt_long : Icons.edit_note,
         color: proveedor != null ? Color(proveedor!.color) : Colors.grey,
@@ -371,6 +384,10 @@ class _FilaHistorico extends StatelessWidget {
         children: [
           Text('${euros3(precio.precioUnitario)}/$unidad',
               style: const TextStyle(fontWeight: FontWeight.w600)),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: onEditar,
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 20),
             onPressed: onBorrar,
@@ -539,4 +556,155 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Hoja para editar un precio ya registrado (precio, cantidad y fecha).
+class _EditarPrecioSheet extends StatefulWidget {
+  final FirestoreService db;
+  final Producto producto;
+  final Precio precio;
+  const _EditarPrecioSheet({
+    required this.db,
+    required this.producto,
+    required this.precio,
+  });
+
+  @override
+  State<_EditarPrecioSheet> createState() => _EditarPrecioSheetState();
+}
+
+class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
+  late final TextEditingController _precioCtrl;
+  late final TextEditingController _cantidadCtrl;
+  late DateTime _fecha;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _precioCtrl = TextEditingController(
+        text: _n(widget.precio.precioPaquete));
+    _cantidadCtrl = TextEditingController(text: _n(widget.precio.cantidad));
+    _fecha = widget.precio.fecha;
+  }
+
+  static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+
+  @override
+  void dispose() {
+    _precioCtrl.dispose();
+    _cantidadCtrl.dispose();
+    super.dispose();
+  }
+
+  double get _precioUnitario {
+    final p = double.tryParse(_precioCtrl.text.replaceAll(',', '.')) ?? 0;
+    final c = double.tryParse(_cantidadCtrl.text.replaceAll(',', '.')) ?? 1;
+    return c > 0 ? p / c : 0;
+  }
+
+  Future<void> _guardar() async {
+    final precio = double.tryParse(_precioCtrl.text.replaceAll(',', '.'));
+    final cantidad = double.tryParse(_cantidadCtrl.text.replaceAll(',', '.'));
+    if (precio == null || cantidad == null || cantidad <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rellena precio y cantidad válidos.')),
+      );
+      return;
+    }
+    setState(() => _guardando = true);
+    await widget.db.actualizarPrecio(
+      widget.precio.id,
+      precioPaquete: precio,
+      cantidad: cantidad,
+      fecha: _fecha,
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unidad = widget.producto.unidadBase.nombre;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Editar precio · ${widget.producto.nombre}',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _precioCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Precio (€)', border: OutlineInputBorder()),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _cantidadCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                      labelText: 'Cantidad ($unidad)',
+                      border: const OutlineInputBorder()),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('= ${euros3(_precioUnitario)}/$unidad',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.green)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 18),
+              const SizedBox(width: 8),
+              Text(fecha(_fecha)),
+              const Spacer(),
+              TextButton(
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: _fecha,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 1)),
+                  );
+                  if (d != null) setState(() => _fecha = d);
+                },
+                child: const Text('Cambiar fecha'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _guardando ? null : _guardar,
+              child: _guardando
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Guardar cambios'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

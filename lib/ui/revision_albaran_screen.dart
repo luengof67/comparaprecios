@@ -469,7 +469,7 @@ class _SelectorProductoState extends State<_SelectorProducto> {
           const SizedBox(height: 8),
           FilledButton.tonalIcon(
             icon: const Icon(Icons.add),
-            label: const Text('Crear producto nuevo con este nombre'),
+            label: const Text('Crear producto nuevo…'),
             onPressed: _crearNuevo,
           ),
           const SizedBox(height: 8),
@@ -491,12 +491,61 @@ class _SelectorProductoState extends State<_SelectorProducto> {
   }
 
   Future<void> _crearNuevo() async {
-    // Crea un producto rápido con el nombre del albarán (editable luego).
+    // Pregunta el nombre (prerelleno con el del albarán, editable) y la unidad.
+    final nombreCtrl = TextEditingController(text: widget.sugerencia);
+    UnidadBase unidad = UnidadBase.kg;
+    final crear = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Nuevo producto'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nombreCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del producto',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<UnidadBase>(
+                initialValue: unidad,
+                decoration: const InputDecoration(
+                  labelText: 'Unidad',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: UnidadBase.kg, child: Text('Kilos (kg)')),
+                  DropdownMenuItem(value: UnidadBase.litro, child: Text('Litros (L)')),
+                  DropdownMenuItem(value: UnidadBase.unidad, child: Text('Unidades (ud)')),
+                ],
+                onChanged: (v) => setLocal(() => unidad = v ?? UnidadBase.kg),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Crear')),
+          ],
+        ),
+      ),
+    );
+    if (crear != true) return;
+    final nombre = nombreCtrl.text.trim();
+    if (nombre.isEmpty) return;
+
     final id = await widget.db.guardarProducto(Producto(
       id: '',
-      nombre: widget.sugerencia,
+      nombre: nombre,
       categoria: 'General',
-      unidadBase: UnidadBase.kg,
+      unidadBase: unidad,
     ));
     if (mounted) Navigator.pop(context, 'nuevo:$id');
   }

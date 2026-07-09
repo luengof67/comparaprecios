@@ -137,6 +137,11 @@ class _ComprasScreenState extends State<ComprasScreen> {
                         trailing: Text(euros(c.total),
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => _CompraDetalleScreen(compra: c)),
+                        ),
                         onLongPress: () => _confirmarBorrado(context, c),
                       ),
                     );
@@ -537,4 +542,61 @@ class _LineaSheetState extends State<_LineaSheet> {
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Detalle de una compra guardada (solo lectura).
+class _CompraDetalleScreen extends StatelessWidget {
+  final Compra compra;
+  const _CompraDetalleScreen({required this.compra});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(compra.proveedorNombre)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 18),
+              const SizedBox(width: 8),
+              Text(fecha(compra.fecha)),
+            ],
+          ),
+          if (compra.evento != null && compra.evento!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.event, size: 18),
+                const SizedBox(width: 8),
+                Text(compra.evento!),
+              ],
+            ),
+          ],
+          const Divider(height: 24),
+          ...compra.lineas.map((l) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(l.productoNombre),
+                subtitle: Text(
+                    '${l.cantidad.toStringAsFixed(l.cantidad % 1 == 0 ? 0 : 2)} '
+                    '${l.unidad} · ${euros3(l.precioUnitario)}/${l.unidad}'),
+                trailing: Text(euros(l.total),
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              )),
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('TOTAL',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text(euros(compra.total),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

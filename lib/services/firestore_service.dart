@@ -126,6 +126,23 @@ class FirestoreService {
 
   Future<void> borrarPrecio(String id) => _precios.doc(id).delete();
 
+  /// Edita un registro de precio existente (precio, cantidad y fecha).
+  /// Recalcula el precio unitario.
+  Future<void> actualizarPrecio(
+    String id, {
+    required double precioPaquete,
+    required double cantidad,
+    required DateTime fecha,
+  }) {
+    final unitario = cantidad > 0 ? precioPaquete / cantidad : 0;
+    return _precios.doc(id).update({
+      'precioPaquete': precioPaquete,
+      'cantidad': cantidad,
+      'precioUnitario': unitario,
+      'fecha': Timestamp.fromDate(fecha),
+    });
+  }
+
   // ---- COMPRAS ----
   CollectionReference get _compras => _db.collection('compras');
 
