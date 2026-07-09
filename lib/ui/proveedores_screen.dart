@@ -14,9 +14,25 @@ const _coloresProveedor = [
   0xFF4527A0, // indigo
 ];
 
-class ProveedoresScreen extends StatelessWidget {
+class ProveedoresScreen extends StatefulWidget {
   final FirestoreService db;
   const ProveedoresScreen({super.key, required this.db});
+
+  @override
+  State<ProveedoresScreen> createState() => _ProveedoresScreenState();
+}
+
+class _ProveedoresScreenState extends State<ProveedoresScreen> {
+  String _busqueda = '';
+  FirestoreService get db => widget.db;
+
+  bool _coincide(Proveedor p, String q) {
+    if (q.isEmpty) return true;
+    final t = q.toLowerCase();
+    if (p.nombre.toLowerCase().contains(t)) return true;
+    if (p.contacto != null && p.contacto!.toLowerCase().contains(t)) return true;
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,36 +42,68 @@ class ProveedoresScreen extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('Proveedor'),
       ),
-      body: StreamBuilder<List<Proveedor>>(
-        stream: db.proveedores(),
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final proveedores = snap.data!;
-          if (proveedores.isEmpty) {
-            return const Center(
-              child: Text('Añade tus proveedores con el botón +',
-                  style: TextStyle(color: Colors.grey)),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 90),
-            itemCount: proveedores.length,
-            itemBuilder: (_, i) {
-              final p = proveedores[i];
-              return ListTile(
-                leading: CircleAvatar(backgroundColor: Color(p.color)),
-                title: Text(p.nombre),
-                subtitle: p.contacto != null ? Text(p.contacto!) : null,
-                trailing: IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: () => _editar(context, p),
-                ),
-              );
-            },
-          );
-        },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Buscar proveedor',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _busqueda.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() => _busqueda = ''),
+                      ),
+              ),
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<Proveedor>>(
+              stream: db.proveedores(),
+              builder: (context, snap) {
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final todos = snap.data!;
+                if (todos.isEmpty) {
+                  return const Center(
+                    child: Text('Añade tus proveedores con el botón +',
+                        style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                final proveedores =
+                    todos.where((p) => _coincide(p, _busqueda)).toList();
+                if (proveedores.isEmpty) {
+                  return const Center(
+                    child: Text('Sin resultados',
+                        style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 90),
+                  itemCount: proveedores.length,
+                  itemBuilder: (_, i) {
+                    final p = proveedores[i];
+                    return ListTile(
+                      leading: CircleAvatar(backgroundColor: Color(p.color)),
+                      title: Text(p.nombre),
+                      subtitle: p.contacto != null ? Text(p.contacto!) : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _editar(context, p),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

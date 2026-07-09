@@ -6,9 +6,29 @@ import '../services/firestore_service.dart';
 import 'categorias.dart';
 import 'producto_detalle_screen.dart';
 
-class ProductosScreen extends StatelessWidget {
+class ProductosScreen extends StatefulWidget {
   final FirestoreService db;
   const ProductosScreen({super.key, required this.db});
+
+  @override
+  State<ProductosScreen> createState() => _ProductosScreenState();
+}
+
+class _ProductosScreenState extends State<ProductosScreen> {
+  String _busqueda = '';
+
+  FirestoreService get db => widget.db;
+
+  bool _coincide(Producto p, String q) {
+    if (q.isEmpty) return true;
+    final t = q.toLowerCase();
+    if (p.nombre.toLowerCase().contains(t)) return true;
+    if (p.categoria.toLowerCase().contains(t)) return true;
+    for (final a in p.alias) {
+      if (a.texto.toLowerCase().contains(t)) return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,46 +38,80 @@ class ProductosScreen extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('Producto'),
       ),
-      body: StreamBuilder<List<Producto>>(
-        stream: db.productos(),
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final productos = snap.data!;
-          if (productos.isEmpty) {
-            return const Center(
-              child: Text('Crea tu primer producto con el botón +',
-                  style: TextStyle(color: Colors.grey)),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 90),
-            itemCount: productos.length,
-            itemBuilder: (_, i) {
-              final p = productos[i];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorCategoria(p.categoria).withValues(alpha: 0.15),
-                  child: Icon(iconoCategoria(p.categoria),
-                      color: colorCategoria(p.categoria)),
-                ),
-                title: Text(p.nombre),
-                subtitle: Text('${p.categoria} · ${p.unidadBase.etiqueta}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: () => _editar(context, p),
-                ),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProductoDetalleScreen(db: db, producto: p),
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Buscar por nombre, categoría o alias',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _busqueda.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() => _busqueda = ''),
+                      ),
+              ),
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<Producto>>(
+              stream: db.productos(),
+              builder: (context, snap) {
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final todos = snap.data!;
+                if (todos.isEmpty) {
+                  return const Center(
+                    child: Text('Crea tu primer producto con el botón +',
+                        style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                final productos =
+                    todos.where((p) => _coincide(p, _busqueda)).toList();
+                if (productos.isEmpty) {
+                  return const Center(
+                    child: Text('Sin resultados para tu búsqueda.',
+                        style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 90),
+                  itemCount: productos.length,
+                  itemBuilder: (_, i) {
+                    final p = productos[i];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor:
+                            colorCategoria(p.categoria).withValues(alpha: 0.15),
+                        child: Icon(iconoCategoria(p.categoria),
+                            color: colorCategoria(p.categoria)),
+                      ),
+                      title: Text(p.nombre),
+                      subtitle: Text('${p.categoria} · ${p.unidadBase.etiqueta}'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _editar(context, p),
+                      ),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ProductoDetalleScreen(db: db, producto: p),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -161,15 +215,16 @@ class _ProductoFormState extends State<_ProductoForm> {
         top: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(widget.existente == null ? 'Nuevo producto' : 'Editar producto',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _nombre,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.existente == null ? 'Nuevo producto' : 'Editar producto',
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _nombre,
             decoration: const InputDecoration(
                 labelText: 'Nombre', border: OutlineInputBorder()),
           ),
@@ -285,6 +340,7 @@ class _ProductoFormState extends State<_ProductoForm> {
             ],
           ),
         ],
+        ),
       ),
     );
   }

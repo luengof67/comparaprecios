@@ -9,6 +9,7 @@ import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
 import '../services/informe_compra_service.dart';
 import 'formato.dart';
+import 'montar_lista_screen.dart';
 
 /// Lista de la compra optima (Fase 1):
 /// para cada producto con precios, coge el proveedor mas barato
@@ -19,9 +20,18 @@ class ListaCompraScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Producto>>(
-      stream: db.productos(),
-      builder: (context, snapProd) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => MontarListaScreen(db: db)),
+        ),
+        icon: const Icon(Icons.edit_note),
+        label: const Text('Montar lista'),
+      ),
+      body: StreamBuilder<List<Producto>>(
+        stream: db.productos(),
+        builder: (context, snapProd) {
         return StreamBuilder<List<Proveedor>>(
           stream: db.proveedores(),
           builder: (context, snapProv) {
@@ -285,6 +295,7 @@ class ListaCompraScreen extends StatelessWidget {
           },
         );
       },
+      ),
     );
   }
 

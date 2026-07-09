@@ -8,9 +8,31 @@ import '../services/firestore_service.dart';
 import 'escaner_screen.dart';
 import 'formato.dart';
 
-class ComprasScreen extends StatelessWidget {
+class ComprasScreen extends StatefulWidget {
   final FirestoreService db;
   const ComprasScreen({super.key, required this.db});
+
+  @override
+  State<ComprasScreen> createState() => _ComprasScreenState();
+}
+
+class _ComprasScreenState extends State<ComprasScreen> {
+  String _busqueda = '';
+
+  FirestoreService get db => widget.db;
+
+  bool _coincide(Compra c, String q) {
+    if (q.isEmpty) return true;
+    final t = q.toLowerCase();
+    if (c.proveedorNombre.toLowerCase().contains(t)) return true;
+    if ((c.evento ?? '').toLowerCase().contains(t)) return true;
+    if (fecha(c.fecha).toLowerCase().contains(t)) return true;
+    // también por producto dentro de la compra
+    for (final l in c.lineas) {
+      if (l.productoNombre.toLowerCase().contains(t)) return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,57 +62,90 @@ class ComprasScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: StreamBuilder<List<Compra>>(
-        stream: db.compras(),
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Error: ${snap.error}',
-                    style: const TextStyle(color: Colors.red)),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Buscar por proveedor, evento, fecha o producto',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _busqueda.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() => _busqueda = ''),
+                      ),
               ),
-            );
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final compras = snap.data!;
-          if (compras.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Aún no has registrado compras.\nPulsa "Nueva compra".',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 90),
-            itemCount: compras.length,
-            itemBuilder: (_, i) {
-              final c = compras[i];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: ListTile(
-                  title: Text(c.proveedorNombre,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    '${fecha(c.fecha)} · ${c.lineas.length} líneas'
-                    '${c.evento != null && c.evento!.isNotEmpty ? " · ${c.evento}" : ""}',
-                  ),
-                  trailing: Text(euros(c.total),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  onLongPress: () => _confirmarBorrado(context, c),
-                ),
-              );
-            },
-          );
-        },
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<Compra>>(
+              stream: db.compras(),
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('Error: ${snap.error}',
+                          style: const TextStyle(color: Colors.red)),
+                    ),
+                  );
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final todas = snap.data!;
+                if (todas.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text(
+                        'Aún no has registrado compras.\nPulsa "Nueva compra".',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  );
+                }
+                final compras =
+                    todas.where((c) => _coincide(c, _busqueda)).toList();
+                if (compras.isEmpty) {
+                  return const Center(
+                    child: Text('Sin resultados para tu búsqueda.',
+                        style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 90),
+                  itemCount: compras.length,
+                  itemBuilder: (_, i) {
+                    final c = compras[i];
+                    return Card(
+                      margin:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: ListTile(
+                        title: Text(c.proveedorNombre,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          '${fecha(c.fecha)} · ${c.lineas.length} líneas'
+                          '${c.evento != null && c.evento!.isNotEmpty ? " · ${c.evento}" : ""}',
+                        ),
+                        trailing: Text(euros(c.total),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        onLongPress: () => _confirmarBorrado(context, c),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
