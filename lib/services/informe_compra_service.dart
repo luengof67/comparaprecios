@@ -24,7 +24,7 @@ class LineaOptima {
 class InformeCompraService {
   /// Genera y muestra (imprimir/guardar/compartir) el PDF de la compra óptima.
   /// Recibe las comparativas ya filtradas (en lista y con cantidad).
-  static Future<void> generarPdf(List<Comparativa> comparativas) async {
+  static Future<void> generarPdf(List<ComparativaProducto> comparativas) async {
     // Agrupa por proveedor más barato.
     final porProveedor = <String, List<LineaOptima>>{};
     double totalOptimo = 0;
