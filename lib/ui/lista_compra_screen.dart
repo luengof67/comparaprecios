@@ -9,6 +9,7 @@ import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
 import '../services/informe_compra_service.dart';
 import 'formato.dart';
+import 'lista_foto_screen.dart';
 import 'montar_lista_screen.dart';
 
 /// Lista de la compra optima (Fase 1):
@@ -21,13 +22,30 @@ class ListaCompraScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => MontarListaScreen(db: db)),
-        ),
-        icon: const Icon(Icons.edit_note),
-        label: const Text('Montar lista'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'listafoto',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ListaFotoScreen(db: db)),
+            ),
+            icon: const Icon(Icons.photo_camera),
+            label: const Text('Lista por foto'),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'montarlista',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => MontarListaScreen(db: db)),
+            ),
+            icon: const Icon(Icons.edit_note),
+            label: const Text('Montar lista'),
+          ),
+        ],
       ),
       body: StreamBuilder<List<Producto>>(
         stream: db.productos(),

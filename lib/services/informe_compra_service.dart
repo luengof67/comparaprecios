@@ -26,6 +26,9 @@ class InformeCompraService {
   /// Genera y muestra (imprimir/guardar/compartir) el PDF de la compra óptima.
   /// Recibe las comparativas ya filtradas (en lista y con cantidad).
   static Future<void> generarPdf(List<ComparativaProducto> comparativas) async {
+    // Fuentes con soporte del símbolo del euro (€).
+    final fuenteNormal = await PdfGoogleFonts.robotoRegular();
+    final fuenteNegrita = await PdfGoogleFonts.robotoBold();
     // Agrupa por proveedor más barato.
     final porProveedor = <String, List<LineaOptima>>{};
     double totalOptimo = 0;
@@ -50,7 +53,12 @@ class InformeCompraService {
 
     final ahorro = totalCaro - totalOptimo;
 
-    final doc = pw.Document();
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: fuenteNormal,
+        bold: fuenteNegrita,
+      ),
+    );
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
