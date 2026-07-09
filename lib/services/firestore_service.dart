@@ -177,4 +177,43 @@ class FirestoreService {
   }
 
   Future<void> borrarCompra(String id) => _compras.doc(id).delete();
+
+  /// Actualiza las líneas de una compra existente (recalcula el total).
+  Future<void> actualizarCompraLineas(
+      String compraId, List<LineaCompra> lineas) {
+    final total = lineas.fold<double>(0, (s, l) => s + l.total);
+    return _compras.doc(compraId).update({
+      'lineas': lineas.map((l) => l.toMap()).toList(),
+      'total': total,
+    });
+  }
+
+  /// Best-effort: corrige el precio del histórico generado por una línea de
+  /// compra (mismo producto, proveedor, día y origen "compra").
+  Future<void> actualizarPrecioDeCompra({
+    required String productoId,
+    required String proveedorId,
+    required DateTime fecha,
+    required double nuevoUnitario,
+  }) async {
+    final s = await _precios.where('productoId', isEqualTo: productoId).get();
+    for (final doc in s.docs) {
+      final d = doc.data() as Map<String, dynamic>;
+      if (d['proveedorId'] != proveedorId) continue;
+      if (d['fuente'] != 'compra') continue;
+      final t = (d['fecha'] as Timestamp?)?.toDate();
+      if (t == null ||
+          t.year != fecha.year ||
+          t.month != fecha.month ||
+          t.day != fecha.day) {
+        continue;
+      }
+      await doc.reference.update({
+        'precioPaquete': nuevoUnitario,
+        'cantidad': 1,
+        'precioUnitario': nuevoUnitario,
+      });
+      return;
+    }
+  }
 }

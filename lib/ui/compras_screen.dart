@@ -140,7 +140,8 @@ class _ComprasScreenState extends State<ComprasScreen> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) => _CompraDetalleScreen(compra: c)),
+                              builder: (_) =>
+                                  _CompraDetalleScreen(db: db, compra: c)),
                         ),
                         onLongPress: () => _confirmarBorrado(context, c),
                       ),
@@ -544,15 +545,111 @@ extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-/// Detalle de una compra guardada (solo lectura).
-class _CompraDetalleScreen extends StatelessWidget {
+/// Estado editable de una línea de la compra.
+class _LineaEdit {
+  final LineaCompra origen;
+  final TextEditingController cantidad;
+  final TextEditingController total; // precio total de la línea (caja)
+
+  _LineaEdit(this.origen)
+      : cantidad = TextEditingController(text: _n(origen.cantidad)),
+        total = TextEditingController(text: origen.total.toStringAsFixed(2));
+
+  static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+}
+
+/// Detalle editable de una compra guardada. Permite corregir cantidad y precio
+/// total de cada línea (recalcula el €/unidad) y, al guardar, actualiza también
+/// el precio en el histórico.
+class _CompraDetalleScreen extends StatefulWidget {
+  final FirestoreService db;
   final Compra compra;
-  const _CompraDetalleScreen({required this.compra});
+  const _CompraDetalleScreen({required this.db, required this.compra});
+
+  @override
+  State<_CompraDetalleScreen> createState() => _CompraDetalleScreenState();
+}
+
+class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
+  late final List<_LineaEdit> _lineas;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _lineas = widget.compra.lineas.map((l) => _LineaEdit(l)).toList();
+  }
+
+  double _unitario(_LineaEdit le) {
+    final cant = double.tryParse(le.cantidad.text.replaceAll(',', '.')) ?? 0;
+    final tot = double.tryParse(le.total.text.replaceAll(',', '.')) ?? 0;
+    return cant > 0 ? tot / cant : 0;
+  }
+
+  Future<void> _guardar() async {
+    final nuevasLineas = <LineaCompra>[];
+    for (final le in _lineas) {
+      final cant = double.tryParse(le.cantidad.text.replaceAll(',', '.'));
+      final tot = double.tryParse(le.total.text.replaceAll(',', '.'));
+      if (cant == null || cant <= 0 || tot == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Revisa cantidad y precio de "${le.origen.productoNombre}".')));
+        return;
+      }
+      nuevasLineas.add(LineaCompra(
+        productoId: le.origen.productoId,
+        productoNombre: le.origen.productoNombre,
+        unidad: le.origen.unidad,
+        cantidad: cant,
+        precioUnitario: tot / cant,
+      ));
+    }
+
+    setState(() => _guardando = true);
+    try {
+      await widget.db.actualizarCompraLineas(widget.compra.id, nuevasLineas);
+      // Actualizar también el histórico de cada línea que cambió.
+      for (final l in nuevasLineas) {
+        await widget.db.actualizarPrecioDeCompra(
+          productoId: l.productoId,
+          proveedorId: widget.compra.proveedorId,
+          fecha: widget.compra.fecha,
+          nuevoUnitario: l.precioUnitario,
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Compra actualizada.')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _guardando = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(compra.proveedorNombre)),
+      appBar: AppBar(title: Text(widget.compra.proveedorNombre)),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: FilledButton.icon(
+            onPressed: _guardando ? null : _guardar,
+            icon: _guardando
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.save),
+            label: const Text('Guardar cambios'),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -560,42 +657,76 @@ class _CompraDetalleScreen extends StatelessWidget {
             children: [
               const Icon(Icons.calendar_today, size: 18),
               const SizedBox(width: 8),
-              Text(fecha(compra.fecha)),
-            ],
-          ),
-          if (compra.evento != null && compra.evento!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
+              Text(fecha(widget.compra.fecha)),
+              if (widget.compra.evento != null &&
+                  widget.compra.evento!.isNotEmpty) ...[
+                const SizedBox(width: 16),
                 const Icon(Icons.event, size: 18),
                 const SizedBox(width: 8),
-                Text(compra.evento!),
+                Text(widget.compra.evento!),
               ],
-            ),
-          ],
-          const Divider(height: 24),
-          ...compra.lineas.map((l) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(l.productoNombre),
-                subtitle: Text(
-                    '${l.cantidad.toStringAsFixed(l.cantidad % 1 == 0 ? 0 : 2)} '
-                    '${l.unidad} · ${euros3(l.precioUnitario)}/${l.unidad}'),
-                trailing: Text(euros(l.total),
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-              )),
-          const Divider(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('TOTAL',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              Text(euros(compra.total),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
+          const SizedBox(height: 8),
+          const Text(
+            'Corrige la cantidad y el precio total de cada línea. El €/unidad se '
+            'recalcula solo, y también se corrige en el histórico de precios.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const Divider(height: 24),
+          ..._lineas.map(_tarjeta),
         ],
+      ),
+    );
+  }
+
+  Widget _tarjeta(_LineaEdit le) {
+    final unidad = le.origen.unidad;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(le.origen.productoNombre,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: le.cantidad,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                        labelText: 'Cantidad ($unidad)',
+                        isDense: true,
+                        border: const OutlineInputBorder()),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: le.total,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: 'Precio total (€)',
+                        isDense: true,
+                        border: OutlineInputBorder()),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('= ${euros3(_unitario(le))}/$unidad',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.green)),
+          ],
+        ),
       ),
     );
   }
