@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'services/exportar_escandallo.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart'; // generado por flutterfire configure
+import 'services/exportar_escandallo.dart';
 import 'services/firestore_service.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
@@ -101,10 +101,24 @@ class _RaizScreenState extends State<RaizScreen> {
             ),
           ),
           PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'salir') FirebaseAuth.instance.signOut();
+            onSelected: (v) async {
+              if (v == 'exportar') {
+                await ExportarEscandallo.exportar(context);
+              } else if (v == 'salir') {
+                FirebaseAuth.instance.signOut();
+              }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'exportar',
+                child: Row(
+                  children: [
+                    Icon(Icons.restaurant_menu, size: 20),
+                    SizedBox(width: 8),
+                    Text('Exportar a ESCANDALLO'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'salir',
                 child: Row(
