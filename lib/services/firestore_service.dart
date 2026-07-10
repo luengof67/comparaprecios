@@ -32,6 +32,12 @@ class FirestoreService {
 
   Future<void> borrarProveedor(String id) => _proveedores.doc(id).delete();
 
+  /// Crea un proveedor con solo el nombre y devuelve su id (para importaciones).
+  Future<String> crearProveedorNombre(String nombre) async {
+    final ref = await _proveedores.add(Proveedor(id: '', nombre: nombre).toMap());
+    return ref.id;
+  }
+
   // ---- PRODUCTOS ----
   Stream<List<Producto>> productos() => _productos
       .orderBy('nombreLower')

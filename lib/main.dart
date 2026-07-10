@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart'; // generado por flutterfire configure
 import 'services/exportar_escandallo.dart';
 import 'services/firestore_service.dart';
+import 'ui/importar_cocina_screen.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
 import 'ui/informes_screen.dart';
@@ -104,11 +105,27 @@ class _RaizScreenState extends State<RaizScreen> {
             onSelected: (v) async {
               if (v == 'exportar') {
                 await ExportarEscandallo.exportar(context);
+              } else if (v == 'importar') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => ImportarCocinaScreen(db: _db)),
+                );
               } else if (v == 'salir') {
                 FirebaseAuth.instance.signOut();
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'importar',
+                child: Row(
+                  children: [
+                    Icon(Icons.download, size: 20),
+                    SizedBox(width: 8),
+                    Text('Importar de Compras Cocina'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'exportar',
                 child: Row(
