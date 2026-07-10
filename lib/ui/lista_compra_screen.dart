@@ -79,22 +79,33 @@ class ListaCompraScreen extends StatelessWidget {
                 final comparativas =
                     AnaliticaService.compararTodo(productos, precios, proveedores);
 
-                // Agrupamos por proveedor mas barato.
+                // ¿Hay algún producto con precio en el catálogo?
+                final hayPrecios = comparativas.any((c) => c.tieneDatos);
+
+                // Agrupamos por proveedor mas barato, SOLO los productos que se
+                // van a pedir (en lista y con cantidad > 0).
                 final Map<String, List<ComparativaProducto>> porProveedor = {};
                 for (final c in comparativas) {
                   if (!c.tieneDatos) continue;
+                  if (!c.producto.enLista) continue;
+                  if (c.producto.cantidadEfectiva <= 0) continue;
                   final provId = c.masBarato!.proveedor.id;
                   porProveedor.putIfAbsent(provId, () => []).add(c);
                 }
 
                 if (porProveedor.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
-                        'Añade precios a tus productos y aquí verás\nqué comprar a cada proveedor.',
+                        hayPrecios
+                            ? 'Tu lista está vacía.\n\nMonta tu pedido de la semana '
+                                'con los botones de abajo: escríbelo, hazle una foto '
+                                'o toca "Montar lista".'
+                            : 'Añade precios a tus productos y aquí verás\n'
+                                'qué comprar a cada proveedor.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
+                        style: const TextStyle(color: Colors.grey),
                       ),
                     ),
                   );
