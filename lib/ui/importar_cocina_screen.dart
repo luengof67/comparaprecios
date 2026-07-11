@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/precio.dart';
@@ -28,35 +25,35 @@ class _ImportarCocinaScreenState extends State<ImportarCocinaScreen> {
   List<Producto> _productos = [];
   List<Proveedor> _proveedores = [];
   _Filtro _filtro = _Filtro.todas;
+  final _jsonCtrl = TextEditingController();
 
-  Future<void> _elegirArchivo() async {
+  @override
+  void dispose() {
+    _jsonCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _procesar() async {
+    final texto = _jsonCtrl.text.trim();
+    if (texto.isEmpty) {
+      setState(() => _error = 'Pega primero el contenido del JSON.');
+      return;
+    }
     setState(() => _error = null);
     try {
-      final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        withData: true,
-      );
-      if (res == null || res.files.isEmpty) return;
-      final bytes = res.files.first.bytes;
-      if (bytes == null) {
-        setState(() => _error = 'No se pudo leer el archivo.');
-        return;
-      }
       setState(() => _cargando = true);
-      final contenido = utf8.decode(bytes);
       _productos = await widget.db.productos().first;
       _proveedores = await widget.db.proveedores().first;
       final precios = await widget.db.precios().first;
       final lineas = ImportarCocinaService.parsear(
-          contenido, _productos, _proveedores, precios);
+          texto, _productos, _proveedores, precios);
       setState(() {
         _lineas = lineas;
         _cargando = false;
       });
     } catch (e) {
       setState(() {
-        _error = 'Error al leer el JSON: $e';
+        _error = 'El texto no es un JSON válido de Compras Cocina: $e';
         _cargando = false;
       });
     }
@@ -148,15 +145,27 @@ class _ImportarCocinaScreenState extends State<ImportarCocinaScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
-          'Importa los precios que ya tienes en la app "Compras Cocina". '
-          'Exporta allí el JSON, elígelo aquí, revisa y confirma.',
+          'Importa los precios de "Compras Cocina":\n'
+          '1) En Compras Cocina, exporta el JSON.\n'
+          '2) Abre ese archivo, copia todo su contenido.\n'
+          '3) Pégalo aquí abajo y pulsa "Procesar".',
           style: TextStyle(color: Colors.grey),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _jsonCtrl,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            labelText: 'Pega aquí el JSON',
+            alignLabelWithHint: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: _cargando ? null : _elegirArchivo,
-          icon: const Icon(Icons.folder_open),
-          label: const Text('Elegir archivo JSON'),
+          onPressed: _cargando ? null : _procesar,
+          icon: const Icon(Icons.playlist_add_check),
+          label: const Text('Procesar'),
         ),
         const SizedBox(height: 20),
         if (_cargando) const Center(child: CircularProgressIndicator()),
