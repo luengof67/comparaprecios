@@ -378,7 +378,9 @@ class _FilaHistorico extends StatelessWidget {
       ),
       title: Text(proveedor?.nombre ?? 'Proveedor borrado'),
       subtitle: Text(
-          '${fecha(precio.fecha)} · ${euros(precio.precioPaquete)} / ${precio.cantidad.toStringAsFixed(precio.cantidad % 1 == 0 ? 0 : 2)} $unidad'),
+          '${fecha(precio.fecha)} · ${euros(precio.precioPaquete)} / '
+          '${precio.tieneFormato ? "1 ${precio.formato} = " : ""}'
+          '${precio.cantidad.toStringAsFixed(precio.cantidad % 1 == 0 ? 0 : 2)} $unidad'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -412,6 +414,7 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
   String? _proveedorId;
   final _precioCtrl = TextEditingController();
   final _cantidadCtrl = TextEditingController(text: '1');
+  final _formatoCtrl = TextEditingController();
   final _notaCtrl = TextEditingController();
   DateTime _fecha = DateTime.now();
   bool _guardando = false;
@@ -420,6 +423,7 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
   void dispose() {
     _precioCtrl.dispose();
     _cantidadCtrl.dispose();
+    _formatoCtrl.dispose();
     _notaCtrl.dispose();
     super.dispose();
   }
@@ -446,6 +450,7 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
       precioPaquete: precio,
       cantidad: cantidad,
       fecha: _fecha,
+      formato: _formatoCtrl.text.trim().isEmpty ? null : _formatoCtrl.text.trim(),
       nota: _notaCtrl.text.trim().isEmpty ? null : _notaCtrl.text.trim(),
     ));
     if (mounted) Navigator.pop(context);
@@ -513,6 +518,20 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, color: Colors.green)),
               const SizedBox(height: 12),
+              TextField(
+                controller: _formatoCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Formato de este proveedor (opcional)',
+                  hintText: 'caja, saco, bandeja…',
+                  helperText: _formatoCtrl.text.trim().isEmpty
+                      ? 'Si lo rellenas, podrás pedirlo por ese formato'
+                      : '1 ${_formatoCtrl.text.trim()} = '
+                          '${_cantidadCtrl.text.trim()} $unidad',
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   const Icon(Icons.calendar_today, size: 18),
@@ -576,6 +595,7 @@ class _EditarPrecioSheet extends StatefulWidget {
 class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
   late final TextEditingController _precioCtrl;
   late final TextEditingController _cantidadCtrl;
+  late final TextEditingController _formatoCtrl;
   late DateTime _fecha;
   bool _guardando = false;
 
@@ -585,6 +605,7 @@ class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
     _precioCtrl = TextEditingController(
         text: _n(widget.precio.precioPaquete));
     _cantidadCtrl = TextEditingController(text: _n(widget.precio.cantidad));
+    _formatoCtrl = TextEditingController(text: widget.precio.formato ?? '');
     _fecha = widget.precio.fecha;
   }
 
@@ -594,6 +615,7 @@ class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
   void dispose() {
     _precioCtrl.dispose();
     _cantidadCtrl.dispose();
+    _formatoCtrl.dispose();
     super.dispose();
   }
 
@@ -618,6 +640,7 @@ class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
       precioPaquete: precio,
       cantidad: cantidad,
       fecha: _fecha,
+      formato: _formatoCtrl.text.trim().isEmpty ? null : _formatoCtrl.text.trim(),
     );
     if (mounted) Navigator.pop(context);
   }
@@ -669,6 +692,20 @@ class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
           Text('= ${euros3(_precioUnitario)}/$unidad',
               style: const TextStyle(
                   fontWeight: FontWeight.bold, color: Colors.green)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _formatoCtrl,
+            decoration: InputDecoration(
+              labelText: 'Formato de este proveedor (opcional)',
+              hintText: 'caja, saco, bandeja…',
+              helperText: _formatoCtrl.text.trim().isEmpty
+                  ? 'Si lo rellenas, podrás pedirlo por ese formato'
+                  : '1 ${_formatoCtrl.text.trim()} = '
+                      '${_cantidadCtrl.text.trim()} $unidad',
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [

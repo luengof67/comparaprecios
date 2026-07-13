@@ -25,9 +25,19 @@ class Precio {
   /// Es el numero con el que se comparan los proveedores entre si.
   final double precioUnitario;
 
+  /// Nombre del formato de compra de ESTE proveedor para ESTE producto:
+  /// "caja", "saco", "bandeja", "garrafa"... Vacio = se pide en unidad base.
+  /// La equivalencia en unidad base es `cantidad` (ej. formato "caja",
+  /// cantidad 6 => una caja son 6 kg).
+  final String? formato;
+
   final DateTime fecha;
   final FuentePrecio fuente;
   final String? nota;
+
+  /// ¿Tiene un formato de compra propio (caja, saco...) distinto de la unidad base?
+  bool get tieneFormato =>
+      formato != null && formato!.trim().isNotEmpty && cantidad > 0;
 
   Precio({
     required this.id,
@@ -37,6 +47,7 @@ class Precio {
     required this.cantidad,
     required this.precioUnitario,
     required this.fecha,
+    this.formato,
     this.fuente = FuentePrecio.manual,
     this.nota,
   });
@@ -50,6 +61,7 @@ class Precio {
       precioPaquete: (d['precioPaquete'] ?? 0).toDouble(),
       cantidad: (d['cantidad'] ?? 1).toDouble(),
       precioUnitario: (d['precioUnitario'] ?? 0).toDouble(),
+      formato: d['formato'],
       fecha: (d['fecha'] as Timestamp?)?.toDate() ?? DateTime.now(),
       fuente: switch (d['fuente']) {
         'albaran' => FuentePrecio.albaran,
@@ -66,6 +78,7 @@ class Precio {
         'precioPaquete': precioPaquete,
         'cantidad': cantidad,
         'precioUnitario': precioUnitario,
+        'formato': formato,
         'fecha': Timestamp.fromDate(fecha),
         'fuente': fuente.name,
         'nota': nota,
@@ -78,6 +91,7 @@ class Precio {
     required double precioPaquete,
     required double cantidad,
     DateTime? fecha,
+    String? formato,
     FuentePrecio fuente = FuentePrecio.manual,
     String? nota,
   }) {
@@ -90,6 +104,7 @@ class Precio {
       cantidad: c,
       precioUnitario: precioPaquete / c,
       fecha: fecha ?? DateTime.now(),
+      formato: formato,
       fuente: fuente,
       nota: nota,
     );

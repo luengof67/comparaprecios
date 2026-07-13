@@ -139,12 +139,14 @@ class FirestoreService {
     required double precioPaquete,
     required double cantidad,
     required DateTime fecha,
+    String? formato,
   }) {
     final unitario = cantidad > 0 ? precioPaquete / cantidad : 0;
     return _precios.doc(id).update({
       'precioPaquete': precioPaquete,
       'cantidad': cantidad,
       'precioUnitario': unitario,
+      'formato': formato,
       'fecha': Timestamp.fromDate(fecha),
     });
   }
