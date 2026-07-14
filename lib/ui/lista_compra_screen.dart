@@ -588,13 +588,12 @@ class _BloqueProveedor extends StatelessWidget {
                 const SizedBox(height: 8),
                 if (tieneFormato && !enCajas)
                   Text(
-                    'Este proveedor lo sirve en ${oferta.formato}s '
-                    'de ${_num(oferta.formatoCantidad)} $unidad aprox.',
+                    'Este proveedor lo sirve en ${oferta.formato}s.',
                     style: const TextStyle(fontSize: 12, color: Colors.blue),
                   ),
                 if (tieneFormato && enCajas)
                   const Text(
-                    'El peso real lo ajustarás luego con el albarán.',
+                    'El peso y el coste reales los ajustarás con el albarán.',
                     style: TextStyle(fontSize: 12, color: Colors.blue),
                   ),
                 const SizedBox(height: 4),

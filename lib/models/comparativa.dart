@@ -26,19 +26,10 @@ class OfertaProveedor {
     this.formatoCantidad = 0,
   });
 
-  bool get tieneFormato =>
-      formato != null && formato!.trim().isNotEmpty && formatoCantidad > 0;
-
-  /// Cuantas unidades de formato (cajas) hacen falta para X unidades base,
-  /// redondeando siempre a cajas enteras hacia arriba.
-  int cajasPara(double cantidadBase) {
-    if (!tieneFormato || cantidadBase <= 0) return 0;
-    return (cantidadBase / formatoCantidad).ceil();
-  }
-
-  /// Unidades base reales que suponen N cajas.
-  double baseDeCajas(int cajas) =>
-      tieneFormato ? cajas * formatoCantidad : 0;
+  /// Hay formato si el proveedor le ha puesto nombre (caja, saco...).
+  /// No hace falta saber cuanto pesa: se pide por cajas y el peso real
+  /// se confirma al recibir el albaran.
+  bool get tieneFormato => formato != null && formato!.trim().isNotEmpty;
 }
 
 /// Resultado de comparar todos los proveedores para UN producto.
