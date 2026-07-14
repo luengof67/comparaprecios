@@ -525,8 +525,8 @@ class _AltaPrecioSheetState extends State<_AltaPrecioSheet> {
                   hintText: 'caja, saco, bandeja…',
                   helperText: _formatoCtrl.text.trim().isEmpty
                       ? 'Si lo rellenas, podrás pedirlo por ese formato'
-                      : '1 ${_formatoCtrl.text.trim()} = '
-                          '${_cantidadCtrl.text.trim()} $unidad',
+                      : 'Podrás pedirlo por ${_formatoCtrl.text.trim()}s '
+                          '(el peso real lo pone el albarán)',
                   border: const OutlineInputBorder(),
                 ),
                 onChanged: (_) => setState(() {}),
@@ -700,8 +700,8 @@ class _EditarPrecioSheetState extends State<_EditarPrecioSheet> {
               hintText: 'caja, saco, bandeja…',
               helperText: _formatoCtrl.text.trim().isEmpty
                   ? 'Si lo rellenas, podrás pedirlo por ese formato'
-                  : '1 ${_formatoCtrl.text.trim()} = '
-                      '${_cantidadCtrl.text.trim()} $unidad',
+                  : 'Podrás pedirlo por ${_formatoCtrl.text.trim()}s '
+                      '(el peso real lo pone el albarán)',
               border: const OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
