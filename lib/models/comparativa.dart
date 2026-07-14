@@ -12,12 +12,33 @@ class OfertaProveedor {
   /// +0.10 = ha subido un 10%. null = sin referencia para comparar.
   final double? variacion;
 
+  /// Formato de compra de este proveedor ("caja", "saco"...) y cuantas
+  /// unidades base lleva (ej. caja = 6 kg). null = se pide en unidad base.
+  final String? formato;
+  final double formatoCantidad;
+
   OfertaProveedor({
     required this.proveedor,
     required this.precioUnitario,
     required this.fecha,
     this.variacion,
+    this.formato,
+    this.formatoCantidad = 0,
   });
+
+  bool get tieneFormato =>
+      formato != null && formato!.trim().isNotEmpty && formatoCantidad > 0;
+
+  /// Cuantas unidades de formato (cajas) hacen falta para X unidades base,
+  /// redondeando siempre a cajas enteras hacia arriba.
+  int cajasPara(double cantidadBase) {
+    if (!tieneFormato || cantidadBase <= 0) return 0;
+    return (cantidadBase / formatoCantidad).ceil();
+  }
+
+  /// Unidades base reales que suponen N cajas.
+  double baseDeCajas(int cajas) =>
+      tieneFormato ? cajas * formatoCantidad : 0;
 }
 
 /// Resultado de comparar todos los proveedores para UN producto.

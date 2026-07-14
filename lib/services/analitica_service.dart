@@ -35,6 +35,8 @@ class AnaliticaService {
           fecha: precio.fecha,
           variacion: _variacionVsUltimaCompra(
               preciosDelProducto, provId, precio),
+          formato: precio.formato,
+          formatoCantidad: precio.cantidad,
         ));
       }
     });

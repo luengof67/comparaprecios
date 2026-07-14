@@ -12,6 +12,8 @@ class LineaOptima {
   final double cantidad;
   final String unidad;
   final double precioUnitario;
+  final String? formato; // "caja", "saco"... del proveedor mas barato
+  final int cajas; // cuantas cajas hay que pedir (0 si no hay formato)
   double get subtotal => cantidad * precioUnitario;
 
   LineaOptima({
@@ -19,7 +21,19 @@ class LineaOptima {
     required this.cantidad,
     required this.unidad,
     required this.precioUnitario,
+    this.formato,
+    this.cajas = 0,
   });
+
+  /// Texto de lo que hay que pedir: "2 cajas" o "12 kg".
+  String get pedido {
+    if (formato != null && cajas > 0) {
+      return '$cajas $formato${cajas == 1 ? "" : "s"}';
+    }
+    return '${_n(cantidad)} $unidad';
+  }
+
+  static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 }
 
 class InformeCompraService {
@@ -45,6 +59,8 @@ class InformeCompraService {
         cantidad: cant,
         unidad: c.producto.unidadBase.nombre,
         precioUnitario: barata.precioUnitario,
+        formato: barata.tieneFormato ? barata.formato : null,
+        cajas: barata.tieneFormato ? barata.cajasPara(cant) : 0,
       );
       porProveedor.putIfAbsent(barata.proveedor.nombre, () => []).add(linea);
       totalOptimo += linea.subtotal;
@@ -69,6 +85,12 @@ class InformeCompraService {
                 style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
           ),
           pw.Text('Generada el ${fecha(DateTime.now())}'),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Los importes de productos que se piden por caja/saco son estimados '
+            '(el peso real se ajusta al recibir el albarán).',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
           pw.SizedBox(height: 12),
           // Una sección por proveedor.
           ...porProveedor.entries.map((e) {
@@ -93,11 +115,11 @@ class InformeCompraService {
                     2: pw.Alignment.centerRight,
                     3: pw.Alignment.centerRight,
                   },
-                  headers: ['Producto', 'Cantidad', 'Precio', 'Subtotal'],
+                  headers: ['Producto', 'Pedir', 'Precio', 'Subtotal'],
                   data: lineas
                       .map((l) => [
                             l.producto,
-                            '${_n(l.cantidad)} ${l.unidad}',
+                            l.pedido,
                             '${euros3(l.precioUnitario)}/${l.unidad}',
                             euros(l.subtotal),
                           ])
