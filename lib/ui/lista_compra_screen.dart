@@ -125,6 +125,7 @@ class ListaCompraScreen extends StatelessWidget {
                 double costeOptimo = 0; // comprando cada uno al mas barato
                 double ahorroReal = 0;  // frente a comprarlo todo al mas caro
                 int conCantidad = 0;
+                int enCajasSinCoste = 0; // se confirman con el albaran
                 // Para el "todo en un solo proveedor":
                 final Map<String, double> totalPorProv = {};
                 final Map<String, int> coberturaPorProv = {};
@@ -133,6 +134,11 @@ class ListaCompraScreen extends StatelessWidget {
                   if (!c.producto.enLista) continue;
                   final cant = c.producto.cantidadEfectiva;
                   if (cant <= 0) continue;
+                  // Si se pide en cajas, no se puede calcular el coste todavia.
+                  if (c.producto.pedirEnFormato) {
+                    enCajasSinCoste++;
+                    continue;
+                  }
                   conCantidad++;
                   costeOptimo += c.precioMin * cant;
                   ahorroReal += (c.precioMax - c.precioMin) * cant;
@@ -223,6 +229,16 @@ class ListaCompraScreen extends StatelessWidget {
                                           fontSize: 18)),
                                 ],
                               ),
+                              if (enCajasSinCoste > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    '+ $enCajasSinCoste producto${enCajasSinCoste == 1 ? "" : "s"} '
+                                    'por caja: coste al recibir el albarán',
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.black54),
+                                  ),
+                                ),
                               const SizedBox(height: 4),
                               Row(
                                 mainAxisAlignment:
@@ -421,7 +437,7 @@ class _BloqueProveedor extends StatelessWidget {
               decoration: activo ? null : TextDecoration.lineThrough,
               color: activo ? null : Colors.grey,
             );
-            final cajas = o.tieneFormato ? o.cajasPara(cant) : 0;
+            final enCajas = c.producto.pedirEnFormato && o.tieneFormato;
             return ListTile(
               dense: true,
               leading: Checkbox(
@@ -431,19 +447,22 @@ class _BloqueProveedor extends StatelessWidget {
               title: Text(c.producto.nombre, style: estiloTitulo),
               subtitle: cant > 0
                   ? Text(
-                      o.tieneFormato
-                          ? '$cajas ${o.formato}${cajas == 1 ? "" : "s"} '
-                              '× ${euros3(o.precioUnitario)}/$unidad'
+                      enCajas
+                          ? '${_num(cant)} ${o.formato}${cant == 1 ? "" : "s"} '
+                              '· ${euros3(o.precioUnitario)}/$unidad'
                           : '${_num(cant)} $unidad × ${euros3(o.precioUnitario)}/$unidad',
                       style: TextStyle(color: activo ? null : Colors.grey))
                   : Text('Toca para poner cantidad · ${euros3(o.precioUnitario)}/$unidad',
                       style: TextStyle(color: activo ? null : Colors.grey)),
               trailing: (activo && cant > 0)
-                  ? Text(
-                      euros(o.precioUnitario * cant),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15),
-                    )
+                  ? (enCajas
+                      ? const Text('s/albarán',
+                          style: TextStyle(fontSize: 11, color: Colors.grey))
+                      : Text(
+                          euros(o.precioUnitario * cant),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ))
                   : null,
               onTap: () => _editarCantidad(context, c.producto, unidad, o),
             );
@@ -481,10 +500,9 @@ class _BloqueProveedor extends StatelessWidget {
             break;
           }
         }
-        if (o != null && o.tieneFormato) {
-          final cajas = o.cajasPara(cant);
-          buffer.writeln('- ${c.producto.nombre}: $cajas ${o.formato}'
-              '${cajas == 1 ? "" : "s"}');
+        if (o != null && o.tieneFormato && c.producto.pedirEnFormato) {
+          buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} ${o.formato}'
+              '${cant == 1 ? "" : "s"}');
         } else {
           buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} $unidad');
         }
@@ -524,14 +542,10 @@ class _BloqueProveedor extends StatelessWidget {
       OfertaProveedor oferta) {
     // Si el proveedor tiene formato, se puede pedir en cajas.
     final tieneFormato = oferta.tieneFormato;
-    // Modo inicial: cajas si hay formato.
-    bool enCajas = tieneFormato;
+    // Modo inicial: como se guardó (cajas si estaba en formato).
+    bool enCajas = tieneFormato && producto.pedirEnFormato;
     final cant = producto.cantidadEfectiva;
-    final ctrl = TextEditingController(
-      text: tieneFormato
-          ? (cant > 0 ? oferta.cajasPara(cant).toString() : '')
-          : (cant > 0 ? _num(cant) : ''),
-    );
+    final ctrl = TextEditingController(text: cant > 0 ? _num(cant) : '');
 
     showDialog(
       context: context,
@@ -597,10 +611,9 @@ class _BloqueProveedor extends StatelessWidget {
                 onPressed: () {
                   final n =
                       double.tryParse(ctrl.text.trim().replaceAll(',', '.')) ?? 0;
-                  // Siempre se guarda en unidad base.
-                  final enBase =
-                      (enCajas && tieneFormato) ? n * oferta.formatoCantidad : n;
-                  db.setCantidadSemana(producto.id, enBase);
+                  // Se guarda tal cual: si es en cajas, se marca como formato.
+                  db.setCantidadSemana(producto.id, n,
+                      enFormato: enCajas && tieneFormato);
                   Navigator.pop(ctx);
                 },
                 child: const Text('Guardar'),

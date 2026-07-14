@@ -12,9 +12,12 @@ class LineaOptima {
   final double cantidad;
   final String unidad;
   final double precioUnitario;
-  final String? formato; // "caja", "saco"... del proveedor mas barato
-  final int cajas; // cuantas cajas hay que pedir (0 si no hay formato)
-  double get subtotal => cantidad * precioUnitario;
+  final String? formato; // "caja", "saco"... si se pide por formato
+  final bool enFormato; // true = la cantidad son cajas (coste por confirmar)
+
+  /// Subtotal solo si se pide en unidad base; en cajas no se puede saber aun.
+  double get subtotal => enFormato ? 0 : cantidad * precioUnitario;
+  bool get tieneCoste => !enFormato;
 
   LineaOptima({
     required this.producto,
@@ -22,16 +25,18 @@ class LineaOptima {
     required this.unidad,
     required this.precioUnitario,
     this.formato,
-    this.cajas = 0,
+    this.enFormato = false,
   });
 
   /// Texto de lo que hay que pedir: "2 cajas" o "12 kg".
   String get pedido {
-    if (formato != null && cajas > 0) {
-      return '$cajas $formato${cajas == 1 ? "" : "s"}';
+    if (enFormato && formato != null) {
+      return '${_n(cantidad)} $formato${cantidad == 1 ? "" : "s"}';
     }
     return '${_n(cantidad)} $unidad';
   }
+
+  String get textoSubtotal => enFormato ? 's/albarán' : euros(subtotal);
 
   static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 }
@@ -54,17 +59,20 @@ class InformeCompraService {
       // Oferta más barata.
       final barata = c.ofertas.reduce(
           (a, b) => a.precioUnitario <= b.precioUnitario ? a : b);
+      final enFormato = c.producto.pedirEnFormato && barata.tieneFormato;
       final linea = LineaOptima(
         producto: c.producto.nombre,
         cantidad: cant,
         unidad: c.producto.unidadBase.nombre,
         precioUnitario: barata.precioUnitario,
         formato: barata.tieneFormato ? barata.formato : null,
-        cajas: barata.tieneFormato ? barata.cajasPara(cant) : 0,
+        enFormato: enFormato,
       );
       porProveedor.putIfAbsent(barata.proveedor.nombre, () => []).add(linea);
-      totalOptimo += linea.subtotal;
-      totalCaro += c.precioMax * cant;
+      if (linea.tieneCoste) {
+        totalOptimo += linea.subtotal;
+        totalCaro += c.precioMax * cant;
+      }
     }
 
     final ahorro = totalCaro - totalOptimo;
@@ -97,6 +105,7 @@ class InformeCompraService {
             final lineas = e.value;
             final subtotal =
                 lineas.fold<double>(0, (s, l) => s + l.subtotal);
+            final hayCajas = lineas.any((l) => !l.tieneCoste);
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -121,14 +130,16 @@ class InformeCompraService {
                             l.producto,
                             l.pedido,
                             '${euros3(l.precioUnitario)}/${l.unidad}',
-                            euros(l.subtotal),
+                            l.textoSubtotal,
                           ])
                       .toList(),
                 ),
                 pw.SizedBox(height: 4),
                 pw.Align(
                   alignment: pw.Alignment.centerRight,
-                  child: pw.Text('Subtotal ${e.key}: ${euros(subtotal)}',
+                  child: pw.Text(
+                      'Subtotal ${e.key}: ${euros(subtotal)}'
+                      '${hayCajas ? " (+ lo que se pide por caja)" : ""}',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 ),
               ],

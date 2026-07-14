@@ -60,6 +60,11 @@ class Producto {
   /// 0 = no ajustada; en ese caso manda la habitual.
   final double cantidadSemana;
 
+  /// Si true, `cantidadSemana` está expresada en el FORMATO del proveedor
+  /// (ej. 2 = 2 cajas), no en la unidad base. En ese caso no se puede calcular
+  /// el coste hasta recibir el albarán.
+  final bool pedirEnFormato;
+
   /// Cantidad que manda en la lista: la de semana si está puesta, si no la habitual.
   double get cantidadEfectiva =>
       cantidadSemana > 0 ? cantidadSemana : cantidadHabitual;
@@ -81,6 +86,7 @@ class Producto {
     this.unidadBase = UnidadBase.kg,
     this.cantidadHabitual = 0,
     this.cantidadSemana = 0,
+    this.pedirEnFormato = false,
     this.enLista = true,
     this.alias = const [],
     this.notas,
@@ -96,6 +102,7 @@ class Producto {
       unidadBase: UnidadBaseX.fromString(d['unidadBase']),
       cantidadHabitual: (d['cantidadHabitual'] ?? 0).toDouble(),
       cantidadSemana: (d['cantidadSemana'] ?? 0).toDouble(),
+      pedirEnFormato: d['pedirEnFormato'] ?? false,
       enLista: d['enLista'] ?? true,
       alias: rawAlias
           .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
@@ -111,6 +118,7 @@ class Producto {
         'unidadBase': unidadBase.name,
         'cantidadHabitual': cantidadHabitual,
         'cantidadSemana': cantidadSemana,
+        'pedirEnFormato': pedirEnFormato,
         'enLista': enLista,
         'alias': alias.map((a) => a.toMap()).toList(),
         'notas': notas,

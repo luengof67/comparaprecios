@@ -73,8 +73,13 @@ class FirestoreService {
       _productos.doc(id).update({'cantidadHabitual': cantidad});
 
   /// Actualiza solo la cantidad de esta semana de un producto.
-  Future<void> setCantidadSemana(String id, double cantidad) =>
-      _productos.doc(id).update({'cantidadSemana': cantidad});
+  /// [enFormato] indica si esa cantidad son cajas/sacos (true) o unidad base.
+  Future<void> setCantidadSemana(String id, double cantidad,
+          {bool enFormato = false}) =>
+      _productos.doc(id).update({
+        'cantidadSemana': cantidad,
+        'pedirEnFormato': enFormato,
+      });
 
   /// Reinicia la semana: copia la cantidad habitual a la de semana en todos.
   Future<void> reiniciarSemana() async {
