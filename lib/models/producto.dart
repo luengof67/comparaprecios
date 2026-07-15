@@ -65,6 +65,10 @@ class Producto {
   /// el coste hasta recibir el albarán.
   final bool pedirEnFormato;
 
+  /// Nombre del formato elegido esta semana ("caja", "docena", "estuche"...).
+  /// Solo tiene sentido si pedirEnFormato es true. Vacío = sin formato.
+  final String formatoSemana;
+
   /// Cantidad que manda en la lista: la de semana si está puesta, si no la habitual.
   double get cantidadEfectiva =>
       cantidadSemana > 0 ? cantidadSemana : cantidadHabitual;
@@ -87,6 +91,7 @@ class Producto {
     this.cantidadHabitual = 0,
     this.cantidadSemana = 0,
     this.pedirEnFormato = false,
+    this.formatoSemana = '',
     this.enLista = true,
     this.alias = const [],
     this.notas,
@@ -103,6 +108,7 @@ class Producto {
       cantidadHabitual: (d['cantidadHabitual'] ?? 0).toDouble(),
       cantidadSemana: (d['cantidadSemana'] ?? 0).toDouble(),
       pedirEnFormato: d['pedirEnFormato'] ?? false,
+      formatoSemana: (d['formatoSemana'] ?? '').toString(),
       enLista: d['enLista'] ?? true,
       alias: rawAlias
           .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
@@ -119,6 +125,7 @@ class Producto {
         'cantidadHabitual': cantidadHabitual,
         'cantidadSemana': cantidadSemana,
         'pedirEnFormato': pedirEnFormato,
+        'formatoSemana': formatoSemana,
         'enLista': enLista,
         'alias': alias.map((a) => a.toMap()).toList(),
         'notas': notas,

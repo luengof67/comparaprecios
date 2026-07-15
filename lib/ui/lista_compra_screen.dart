@@ -437,7 +437,12 @@ class _BloqueProveedor extends StatelessWidget {
               decoration: activo ? null : TextDecoration.lineThrough,
               color: activo ? null : Colors.grey,
             );
-            final enCajas = c.producto.pedirEnFormato && o.tieneFormato;
+            // Formato con el que se pide: el elegido al montar la lista, o
+            // si no, el que tenga registrado el proveedor.
+            final fmtPedido = c.producto.formatoSemana.isNotEmpty
+                ? c.producto.formatoSemana
+                : (o.formato ?? '');
+            final enCajas = c.producto.pedirEnFormato && fmtPedido.isNotEmpty;
             return ListTile(
               dense: true,
               leading: Checkbox(
@@ -448,7 +453,7 @@ class _BloqueProveedor extends StatelessWidget {
               subtitle: cant > 0
                   ? Text(
                       enCajas
-                          ? '${_num(cant)} ${o.formato}${cant == 1 ? "" : "s"} '
+                          ? '${_num(cant)} $fmtPedido${cant == 1 ? "" : "s"} '
                               '· ${euros3(o.precioUnitario)}/$unidad'
                           : '${_num(cant)} $unidad × ${euros3(o.precioUnitario)}/$unidad',
                       style: TextStyle(color: activo ? null : Colors.grey))
@@ -500,8 +505,11 @@ class _BloqueProveedor extends StatelessWidget {
             break;
           }
         }
-        if (o != null && o.tieneFormato && c.producto.pedirEnFormato) {
-          buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} ${o.formato}'
+        final fmtPedido = c.producto.formatoSemana.isNotEmpty
+            ? c.producto.formatoSemana
+            : (o != null && o.tieneFormato ? o.formato! : '');
+        if (c.producto.pedirEnFormato && fmtPedido.isNotEmpty) {
+          buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} $fmtPedido'
               '${cant == 1 ? "" : "s"}');
         } else {
           buffer.writeln('- ${c.producto.nombre}: ${_num(cant)} $unidad');
@@ -624,8 +632,14 @@ class _BloqueProveedor extends StatelessWidget {
                   final n =
                       double.tryParse(ctrl.text.trim().replaceAll(',', '.')) ?? 0;
                   // Se guarda tal cual: si es en cajas, se marca como formato.
+                  final enFmt = enCajas && tieneFormato;
                   db.setCantidadSemana(producto.id, n,
-                      enFormato: enCajas && tieneFormato);
+                      enFormato: enFmt,
+                      formato: enFmt
+                          ? (producto.formatoSemana.isNotEmpty
+                              ? producto.formatoSemana
+                              : (oferta.formato ?? ''))
+                          : '');
                   Navigator.pop(ctx);
                 },
                 child: const Text('Guardar'),

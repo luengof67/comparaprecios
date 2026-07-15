@@ -74,11 +74,13 @@ class FirestoreService {
 
   /// Actualiza solo la cantidad de esta semana de un producto.
   /// [enFormato] indica si esa cantidad son cajas/sacos (true) o unidad base.
+  /// [formato] es el nombre del formato elegido ("caja", "docena"...).
   Future<void> setCantidadSemana(String id, double cantidad,
-          {bool enFormato = false}) =>
+          {bool enFormato = false, String formato = ''}) =>
       _productos.doc(id).update({
         'cantidadSemana': cantidad,
         'pedirEnFormato': enFormato,
+        'formatoSemana': enFormato ? formato : '',
       });
 
   /// Reinicia la semana: copia la cantidad habitual a la de semana en todos.
