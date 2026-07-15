@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/compra.dart';
+import '../models/plantilla.dart';
 import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
@@ -231,4 +232,18 @@ class FirestoreService {
       return;
     }
   }
+
+  // ---- PLANTILLAS DE LISTA ----
+  CollectionReference get _plantillas => _db.collection('plantillas');
+
+  Future<List<PlantillaLista>> plantillasUnaVez() async {
+    final s = await _plantillas.orderBy('nombre').get();
+    return s.docs.map(PlantillaLista.fromDoc).toList();
+  }
+
+  Future<void> guardarPlantilla(String nombre, List<LineaPlantilla> lineas) =>
+      _plantillas.add(PlantillaLista(id: '', nombre: nombre, lineas: lineas)
+          .toMap());
+
+  Future<void> borrarPlantilla(String id) => _plantillas.doc(id).delete();
 }

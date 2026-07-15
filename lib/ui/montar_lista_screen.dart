@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/plantilla.dart';
 import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
@@ -240,7 +241,21 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
     final sug = _sugerencias;
     final sinResultados = _busqueda.trim().isNotEmpty && sug.isEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text('Montar lista')),
+      appBar: AppBar(
+        title: const Text('Montar lista'),
+        actions: [
+          IconButton(
+            tooltip: 'Cargar plantilla',
+            icon: const Icon(Icons.bookmarks_outlined),
+            onPressed: _cargarPlantilla,
+          ),
+          IconButton(
+            tooltip: 'Guardar como plantilla',
+            icon: const Icon(Icons.bookmark_add_outlined),
+            onPressed: _anadidos.isEmpty ? null : _guardarPlantilla,
+          ),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -341,6 +356,131 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
         ],
       ),
     );
+  }
+
+
+  /// Guarda la lista actual como plantilla reutilizable.
+  Future<void> _guardarPlantilla() async {
+    final ctrl = TextEditingController();
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Guardar como plantilla'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Nombre',
+            hintText: 'Ej. Pedido del martes',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Guardar')),
+        ],
+      ),
+    );
+    if (nombre == null || nombre.isEmpty) return;
+    final lineas = _anadidos.entries.map((e) {
+      final p = _prod(e.key);
+      final esBase = p != null && e.value.formato == p.unidadBase.nombre;
+      return LineaPlantilla(
+        productoId: e.key,
+        cantidad: e.value.cantidad,
+        formato: esBase ? '' : e.value.formato,
+      );
+    }).toList();
+    await widget.db.guardarPlantilla(nombre, lineas);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('Plantilla "$nombre" guardada (${lineas.length} productos).')));
+    }
+  }
+
+  /// Muestra las plantillas guardadas y carga la elegida sobre la lista.
+  Future<void> _cargarPlantilla() async {
+    final plantillas = await widget.db.plantillasUnaVez();
+    if (!mounted) return;
+    if (plantillas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No hay plantillas. Monta una lista y guárdala '
+              'con el icono de marcador.')));
+      return;
+    }
+    final elegida = await showModalBottomSheet<PlantillaLista>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Cargar plantilla',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            ...plantillas.map((pl) => ListTile(
+                  leading: const Icon(Icons.bookmark_outline),
+                  title: Text(pl.nombre),
+                  subtitle: Text('${pl.lineas.length} productos'),
+                  onTap: () => Navigator.pop(ctx, pl),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: ctx,
+                        builder: (c2) => AlertDialog(
+                          title: Text('¿Borrar "${pl.nombre}"?'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(c2, false),
+                                child: const Text('Cancelar')),
+                            FilledButton(
+                                onPressed: () => Navigator.pop(c2, true),
+                                child: const Text('Borrar')),
+                          ],
+                        ),
+                      );
+                      if (ok == true) {
+                        await widget.db.borrarPlantilla(pl.id);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      }
+                    },
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (elegida == null) return;
+    // Aplica cada línea; los productos borrados del catálogo se omiten.
+    var omitidos = 0;
+    for (final l in elegida.lineas) {
+      final p = _prod(l.productoId);
+      if (p == null) {
+        omitidos++;
+        continue;
+      }
+      final formato = l.formato.isEmpty ? p.unidadBase.nombre : l.formato;
+      final enFormato = formato != p.unidadBase.nombre;
+      await widget.db.setEnLista(p.id, true);
+      await widget.db.setCantidadSemana(p.id, l.cantidad,
+          enFormato: enFormato, formato: enFormato ? formato : '');
+      _anadidos[p.id] = (cantidad: l.cantidad, formato: formato);
+    }
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Plantilla "${elegida.nombre}" cargada'
+              '${omitidos > 0 ? " ($omitidos productos ya no existen)" : ""}.')));
+    }
   }
 
   static String _n(double v) =>

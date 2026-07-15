@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/compra.dart';
 import '../models/linea_albaran.dart';
+import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/casador_service.dart';
@@ -52,6 +53,9 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
   String? _proveedorId;
   DateTime _fecha = DateTime.now();
   final List<_LineaEd> _lineas = [];
+  // Último precio registrado por 'productoId|proveedorId', para avisar
+  // de subidas al teclear el precio del albarán.
+  final Map<String, Precio> _ultimoPrecio = {};
 
   @override
   void initState() {
@@ -62,6 +66,15 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
   Future<void> _cargar() async {
     _productos = await widget.db.productos().first;
     _proveedores = await widget.db.proveedores().first;
+    // Último precio de cada producto+proveedor (para las alertas de subida).
+    final precios = await widget.db.precios().first;
+    for (final pr in precios) {
+      final k = '${pr.productoId}|${pr.proveedorId}';
+      final actual = _ultimoPrecio[k];
+      if (actual == null || pr.fecha.isAfter(actual.fecha)) {
+        _ultimoPrecio[k] = pr;
+      }
+    }
     // Intenta preseleccionar proveedor por el nombre detectado.
     if (widget.resultado.proveedor != null) {
       final det = widget.resultado.proveedor!.toLowerCase();
@@ -76,7 +89,12 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
     // Crea las líneas UNA vez (conserva controllers y elecciones).
     _lineas.clear();
     for (final l in widget.resultado.lineas) {
-      _lineas.add(_LineaEd(l, TipoCasado.sinCoincidencia, null));
+      final le = _LineaEd(l, TipoCasado.sinCoincidencia, null);
+      // Redibuja al teclear el precio, para actualizar la alerta de subida.
+      le.precio.addListener(() {
+        if (mounted) setState(() {});
+      });
+      _lineas.add(le);
     }
     _aplicarCasado();
     if (mounted) setState(() => _cargando = false);
@@ -347,6 +365,7 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
                   ),
                 ],
               ),
+              _avisoPrecio(le, prod, unidad),
             ],
             const SizedBox(height: 4),
             Align(
@@ -360,6 +379,51 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Compara el precio tecleado con el último registrado de ese producto y
+  /// proveedor. Avisa en rojo si sube >= 10%, en verde si baja >= 10%,
+  /// y muestra la referencia en gris en el resto de casos.
+  Widget _avisoPrecio(_LineaEd le, Producto? prod, String unidad) {
+    if (prod == null || _proveedorId == null) return const SizedBox.shrink();
+    final ultimo = _ultimoPrecio['${prod.id}|$_proveedorId'];
+    if (ultimo == null) return const SizedBox.shrink();
+    final nuevo =
+        double.tryParse(le.precio.text.trim().replaceAll(',', '.'));
+    final ref =
+        'último: ${euros3(ultimo.precioUnitario)}/$unidad (${fechaCorta(ultimo.fecha)})';
+    if (nuevo == null || nuevo <= 0 || ultimo.precioUnitario <= 0) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(ref,
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      );
+    }
+    final dif = (nuevo - ultimo.precioUnitario) / ultimo.precioUnitario * 100;
+    if (dif >= 10) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          '▲ SUBIDA +${dif.toStringAsFixed(0)}% — $ref',
+          style: const TextStyle(
+              fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+      );
+    }
+    if (dif <= -10) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          '▼ baja ${dif.abs().toStringAsFixed(0)}% — $ref',
+          style: const TextStyle(fontSize: 12, color: Colors.green),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(ref,
+          style: const TextStyle(fontSize: 12, color: Colors.grey)),
     );
   }
 

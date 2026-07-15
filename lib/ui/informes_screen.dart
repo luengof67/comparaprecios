@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -8,6 +9,7 @@ import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
+import '../services/informe_mensual_service.dart';
 import '../services/firestore_service.dart';
 import 'comparador_screen.dart';
 import 'formato.dart';
@@ -36,6 +38,11 @@ class _InformesScreenState extends State<InformesScreen> {
       appBar: AppBar(
         title: const Text('Informes'),
         actions: [
+          IconButton(
+            tooltip: 'Cierre de mes (PDF)',
+            icon: const Icon(Icons.picture_as_pdf),
+            onPressed: () => _informeMensual(context),
+          ),
           IconButton(
             tooltip: 'Comparar proveedores',
             icon: const Icon(Icons.compare_arrows),
@@ -160,6 +167,43 @@ class _InformesScreenState extends State<InformesScreen> {
         label: const Text('PDF'),
       ),
     );
+  }
+
+
+  /// Elige un mes con compras y genera el PDF de cierre de mes.
+  Future<void> _informeMensual(BuildContext context) async {
+    final compras = await widget.db.compras().first;
+    if (compras.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No hay compras registradas.')));
+      }
+      return;
+    }
+    // Meses con actividad, del más reciente al más antiguo.
+    final meses = <DateTime>{};
+    for (final c in compras) {
+      meses.add(DateTime(c.fecha.year, c.fecha.month));
+    }
+    final lista = meses.toList()..sort((a, b) => b.compareTo(a));
+    if (!context.mounted) return;
+    final elegido = await showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Cierre de mes'),
+        children: lista
+            .map((m) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, m),
+                  child: Text(
+                      DateFormat('MMMM yyyy', 'es_ES').format(m)),
+                ))
+            .toList(),
+      ),
+    );
+    if (elegido == null) return;
+    final productos = await widget.db.productos().first;
+    await InformeMensualService.generarPdf(
+        mes: elegido, compras: compras, productos: productos);
   }
 
   Future<void> _exportarPdf(BuildContext context) async {
