@@ -1,0 +1,41 @@
+name: Build (Windows escritorio)
+
+on:
+  workflow_dispatch: {}        # botón manual en la pestaña Actions
+  push:
+    tags:
+      - 'win-v*'               # también al crear un tag tipo win-v1.0.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      # La app son varios archivos (exe + dlls + data): se empaqueta en zip.
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath ComparaPrecios-windows.zip
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparaprecios-windows
+          path: ComparaPrecios-windows.zip
+          if-no-files-found: error

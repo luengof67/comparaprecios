@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -34,6 +36,13 @@ class ListaFotoScreen extends StatefulWidget {
 }
 
 class _ListaFotoScreenState extends State<ListaFotoScreen> {
+
+  /// En escritorio (Windows/Linux/macOS) image_picker no tiene cámara:
+  /// se oculta el botón y se usa solo el selector de archivos.
+  bool get _hayCamara =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
   bool _cargando = false;
   bool _guardando = false;
   String? _error;
@@ -206,21 +215,23 @@ class _ListaFotoScreenState extends State<ListaFotoScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed:
-                      _cargando ? null : () => _capturar(ImageSource.camera),
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Cámara'),
+              if (_hayCamara) ...[
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed:
+                        _cargando ? null : () => _capturar(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Cámara'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: FilledButton.tonalIcon(
                   onPressed:
                       _cargando ? null : () => _capturar(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library),
-                  label: const Text('Galería'),
+                  label: Text(_hayCamara ? 'Galería' : 'Elegir imagen…'),
                 ),
               ),
             ],

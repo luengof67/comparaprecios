@@ -20,8 +20,7 @@ class MontarListaScreen extends StatefulWidget {
 
 /// Formatos genéricos que se ofrecen siempre, además de los que ya
 /// tenga registrados el proveedor en el histórico de precios.
-const _formatosGenericos = ['caja', 'docena', 'estuche', 'saco', 'garrafa'];
-
+const _formatosGenericos = ['caja', 'docena', 'estuche', 'saco', 'garrafa', 'lata'];
 class _MontarListaScreenState extends State<MontarListaScreen> {
   final _campo = TextEditingController();
   List<Producto> _catalogo = [];
