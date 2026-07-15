@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../models/precio.dart';
 import '../models/producto.dart';
+import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
+import 'formato.dart';
 
-/// Monta la lista de la compra escribiendo: autocompletar desde el catálogo,
-/// pide la cantidad al elegir, y al terminar la lista queda lista para ver
-/// el reparto y el ahorro.
+/// Monta la lista de la compra escribiendo, sin pensar en precios:
+/// autocompletar desde el catálogo, cantidad + formato (caja, docena,
+/// estuche...) y un aviso informativo del último precio más barato.
+/// El precio real se confirma después, con el albarán.
 class MontarListaScreen extends StatefulWidget {
   final FirestoreService db;
   const MontarListaScreen({super.key, required this.db});
@@ -14,13 +18,18 @@ class MontarListaScreen extends StatefulWidget {
   State<MontarListaScreen> createState() => _MontarListaScreenState();
 }
 
+/// Formatos genéricos que se ofrecen siempre, además de los que ya
+/// tenga registrados el proveedor en el histórico de precios.
+const _formatosGenericos = ['caja', 'docena', 'estuche', 'saco', 'garrafa'];
+
 class _MontarListaScreenState extends State<MontarListaScreen> {
   final _campo = TextEditingController();
   List<Producto> _catalogo = [];
+  Map<String, Proveedor> _proveedores = {};
   bool _cargando = true;
   String _busqueda = '';
-  // Añadidos en esta sesión: productoId -> cantidad.
-  final Map<String, double> _anadidos = {};
+  // Añadidos en esta sesión: productoId -> (cantidad, formato).
+  final Map<String, ({double cantidad, String formato})> _anadidos = {};
 
   @override
   void initState() {
@@ -30,6 +39,8 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
 
   Future<void> _iniciar() async {
     _catalogo = await widget.db.productos().first;
+    final provs = await widget.db.proveedores().first;
+    _proveedores = {for (final p in provs) p.id: p};
     if (!mounted) return;
     // Confirmar que se vacía la lista actual para empezar de cero.
     final ok = await showDialog<bool>(
@@ -75,46 +86,136 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
     }).take(8).toList();
   }
 
+  /// Último precio de cada proveedor para este producto; devuelve el más
+  /// barato (para el aviso) y los formatos conocidos del histórico.
+  ({Precio? mejor, List<String> formatos}) _analizar(List<Precio> historico) {
+    final Map<String, Precio> ultimoPorProv = {};
+    for (final pr in historico) {
+      final actual = ultimoPorProv[pr.proveedorId];
+      if (actual == null || pr.fecha.isAfter(actual.fecha)) {
+        ultimoPorProv[pr.proveedorId] = pr;
+      }
+    }
+    Precio? mejor;
+    final formatos = <String>[];
+    for (final pr in ultimoPorProv.values) {
+      if (mejor == null || pr.precioUnitario < mejor.precioUnitario) {
+        mejor = pr;
+      }
+      final f = (pr.formato ?? '').trim().toLowerCase();
+      if (f.isNotEmpty && !formatos.contains(f)) formatos.add(f);
+    }
+    return (mejor: mejor, formatos: formatos);
+  }
+
   Future<void> _elegir(Producto p) async {
+    // Histórico del producto: para el aviso de mejor precio y sus formatos.
+    final historico = await widget.db.preciosDeProductoUnaVez(p.id);
+    if (!mounted) return;
+    final analisis = _analizar(historico);
+    final mejor = analisis.mejor;
+    final nombreMejor = mejor == null
+        ? null
+        : (_proveedores[mejor.proveedorId]?.nombre ?? 'proveedor');
+
+    // Chips de formato: unidad base + históricos + genéricos, sin repetir.
+    final opciones = <String>[
+      p.unidadBase.nombre,
+      ...analisis.formatos,
+      for (final f in _formatosGenericos)
+        if (!analisis.formatos.contains(f)) f,
+    ];
+
     final ctrl = TextEditingController(
         text: p.cantidadHabitual > 0 ? _n(p.cantidadHabitual) : '');
-    final cantidad = await showDialog<double>(
+    String formatoElegido = p.unidadBase.nombre;
+
+    final resultado =
+        await showDialog<({double cantidad, String formato})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(p.nombre),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Cantidad (${p.unidadBase.nombre})',
-            border: const OutlineInputBorder(),
-          ),
-          onSubmitted: (_) {
-            final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
-            Navigator.pop(ctx, v);
-          },
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
-              Navigator.pop(ctx, v);
-            },
-            child: const Text('Añadir'),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogo) {
+          void confirmar() {
+            final v =
+                double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
+            if (v == null || v <= 0) return;
+            Navigator.pop(ctx, (cantidad: v, formato: formatoElegido));
+          }
+
+          return AlertDialog(
+            title: Text(p.nombre),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Cantidad ($formatoElegido)',
+                    border: const OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => confirmar(),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: -4,
+                  children: opciones.map((f) {
+                    return ChoiceChip(
+                      label: Text(f),
+                      selected: formatoElegido == f,
+                      onSelected: (_) =>
+                          setDialogo(() => formatoElegido = f),
+                    );
+                  }).toList(),
+                ),
+                if (mejor != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Último mejor precio: $nombreMejor · '
+                      '${euros(mejor.precioUnitario)}/${p.unidadBase.nombre} '
+                      '(${fechaCorta(mejor.fecha)})',
+                      style: const TextStyle(
+                          fontSize: 13, color: Colors.green),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: confirmar,
+                child: const Text('Añadir'),
+              ),
+            ],
+          );
+        },
       ),
     );
-    if (cantidad == null || cantidad <= 0) return;
+    if (resultado == null) return;
 
+    // Si el formato elegido no es la unidad base, la cantidad va "en formato"
+    // (cajas, docenas...) y el coste se confirmará con el albarán.
+    final enFormato = resultado.formato != p.unidadBase.nombre;
     await widget.db.setEnLista(p.id, true);
-    await widget.db.setCantidadSemana(p.id, cantidad);
+    await widget.db.setCantidadSemana(p.id, resultado.cantidad,
+        enFormato: enFormato, formato: enFormato ? resultado.formato : '');
     setState(() {
-      _anadidos[p.id] = cantidad;
+      _anadidos[p.id] =
+          (cantidad: resultado.cantidad, formato: resultado.formato);
       _campo.clear();
       _busqueda = '';
     });
@@ -226,10 +327,10 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
                 : ListView(
                     children: _anadidos.entries.map((e) {
                       final p = _prod(e.key);
+                      final v = e.value;
                       return ListTile(
                         title: Text(p?.nombre ?? '—'),
-                        subtitle: Text(
-                            '${_n(e.value)} ${p?.unidadBase.nombre ?? ""}'),
+                        subtitle: Text('${_n(v.cantidad)} ${v.formato}'),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () => _quitar(e.key),
