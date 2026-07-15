@@ -557,6 +557,19 @@ class _BloqueProveedor extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // --- DIAGNOSTICO TEMPORAL ---
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  color: Colors.yellow.withValues(alpha: 0.3),
+                  child: Text(
+                    'DIAG: formato="${oferta.formato}" · '
+                    'tieneFormato=${oferta.tieneFormato} · '
+                    'provMasBarato=${oferta.proveedor.nombre}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // --- FIN DIAGNOSTICO ---
                 if (tieneFormato) ...[
                   SegmentedButton<bool>(
                     segments: [
