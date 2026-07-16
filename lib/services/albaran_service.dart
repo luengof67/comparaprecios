@@ -23,7 +23,7 @@ class AlbaranService {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'imageBase64': b64, 'mediaType': mediaType}),
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(const Duration(seconds: 90));
 
     Map<String, dynamic> data;
     try {
@@ -33,7 +33,19 @@ class AlbaranService {
     }
 
     if (resp.statusCode != 200 || data['error'] != null) {
-      throw data['error']?.toString() ?? 'Error ${resp.statusCode} al leer el albarán.';
+      // El Worker ya devuelve un mensaje claro y un código de causa.
+      final msg = data['error']?.toString() ??
+          'Error ${resp.statusCode} al leer el documento.';
+      final codigo = data['codigo']?.toString();
+      // Prefijo con emoji según la causa, para verlo de un vistazo.
+      final icono = switch (codigo) {
+        'rate_limit' => '⏳ ',
+        'saldo' => '💳 ',
+        'imagen_grande' => '📷 ',
+        'sobrecarga' => '⏳ ',
+        _ => '',
+      };
+      throw '$icono$msg';
     }
 
     return ResultadoAlbaran.fromMap(data);

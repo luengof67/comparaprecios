@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart'; // generado por flutterfire configure
 import 'services/exportar_escandallo.dart';
 import 'services/firestore_service.dart';
+import 'ui/guia_screen.dart';
 import 'ui/importar_cocina_screen.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
@@ -103,7 +104,12 @@ class _RaizScreenState extends State<RaizScreen> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) async {
-              if (v == 'exportar') {
+              if (v == 'guia') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GuiaScreen()),
+                );
+              } else if (v == 'exportar') {
                 await ExportarEscandallo.exportar(context);
               } else if (v == 'importar') {
                 Navigator.push(
@@ -133,6 +139,16 @@ class _RaizScreenState extends State<RaizScreen> {
                     Icon(Icons.restaurant_menu, size: 20),
                     SizedBox(width: 8),
                     Text('Exportar a ESCANDALLO'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'guia',
+                child: Row(
+                  children: [
+                    Icon(Icons.help_outline, size: 20),
+                    SizedBox(width: 8),
+                    Text('Guía de uso'),
                   ],
                 ),
               ),

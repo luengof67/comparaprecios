@@ -78,6 +78,9 @@ class ProductoDetalleScreen extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 12),
                   _GraficoEvolucion(comparativa: c, proveedores: proveedores),
+                  _Estacionalidad(
+                      precios: precios,
+                      unidad: producto.unidadBase.nombre),
                   const SizedBox(height: 24),
                   Text('Histórico', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
@@ -347,6 +350,121 @@ class _GraficoEvolucion extends StatelessWidget {
               ],
             );
           }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+/// Precio medio por mes del año (todos los años juntos): permite ver la
+/// estacionalidad de un producto ("el calabacín se dispara en enero").
+/// Solo se muestra cuando hay datos de al menos 3 meses distintos.
+class _Estacionalidad extends StatelessWidget {
+  final List<Precio> precios;
+  final String unidad;
+  const _Estacionalidad({required this.precios, required this.unidad});
+
+  static const _mesLetra = [
+    'E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    // Media de precio unitario por mes del calendario (1..12).
+    final suma = List<double>.filled(12, 0);
+    final n = List<int>.filled(12, 0);
+    for (final p in precios) {
+      if (p.precioUnitario <= 0) continue;
+      suma[p.fecha.month - 1] += p.precioUnitario;
+      n[p.fecha.month - 1]++;
+    }
+    final medias = List<double?>.generate(
+        12, (i) => n[i] > 0 ? suma[i] / n[i] : null);
+    final conDatos = medias.whereType<double>().toList();
+    if (conDatos.length < 3) return const SizedBox.shrink();
+
+    final maxV = conDatos.reduce((a, b) => a > b ? a : b);
+    final minV = conDatos.reduce((a, b) => a < b ? a : b);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        Text('Estacionalidad (precio medio por mes)',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 180,
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 20, 16, 8),
+              child: BarChart(
+                BarChartData(
+                  maxY: maxV * 1.15,
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                        '${euros3(rod.toY)}/$unidad',
+                        const TextStyle(
+                            color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 44,
+                        getTitlesWidget: (v, _) => Text(
+                            v.toStringAsFixed(2),
+                            style: const TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (v, _) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(_mesLetra[v.toInt()],
+                              style: const TextStyle(fontSize: 10)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  gridData:
+                      const FlGridData(show: true, drawVerticalLine: false),
+                  borderData: FlBorderData(show: false),
+                  barGroups: List.generate(12, (i) {
+                    final v = medias[i];
+                    return BarChartGroupData(x: i, barRods: [
+                      BarChartRodData(
+                        toY: v ?? 0,
+                        width: 14,
+                        borderRadius: BorderRadius.circular(3),
+                        color: v == null
+                            ? Colors.transparent
+                            : v >= maxV * 0.999
+                                ? Colors.red.shade400
+                                : v <= minV * 1.001
+                                    ? Colors.green.shade600
+                                    : Theme.of(context).colorScheme.primary,
+                      ),
+                    ]);
+                  }),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Rojo = mes más caro · Verde = mes más barato. '
+          'Media de todos los años con datos.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
       ],
     );
