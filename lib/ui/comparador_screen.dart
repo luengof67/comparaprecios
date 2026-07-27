@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/precio.dart';
 import '../models/producto.dart';
@@ -90,60 +93,76 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
                     }
                   }
 
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
+                  return Stack(
                     children: [
-                      const Text('Elige proveedores a comparar:',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: proveedores.map((p) {
-                          final sel = _seleccionados.contains(p.id);
-                          return FilterChip(
-                            label: Text(p.nombre),
-                            selected: sel,
-                            avatar: CircleAvatar(
-                                backgroundColor: Color(p.color), radius: 8),
-                            onSelected: (v) => setState(() {
-                              if (v) {
-                                _seleccionados.add(p.id);
-                              } else {
-                                _seleccionados.remove(p.id);
-                              }
-                            }),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
-                      if (elegidos.length < 2)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text(
-                              'Toca dos o más proveedores arriba para compararlos.',
-                              style: TextStyle(color: Colors.grey)),
-                        )
-                      else if (filas.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            'Los proveedores elegidos no comparten ningún producto '
-                            'con precio. Para compararlos, registra precios de un '
-                            'mismo producto en cada uno de ellos '
-                            '(o elige otros proveedores).',
-                            style: TextStyle(color: Colors.grey.shade700),
+                      ListView(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 90),
+                        children: [
+                          const Text('Elige proveedores a comparar:',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: proveedores.map((p) {
+                              final sel = _seleccionados.contains(p.id);
+                              return FilterChip(
+                                label: Text(p.nombre),
+                                selected: sel,
+                                avatar: CircleAvatar(
+                                    backgroundColor: Color(p.color), radius: 8),
+                                onSelected: (v) => setState(() {
+                                  if (v) {
+                                    _seleccionados.add(p.id);
+                                  } else {
+                                    _seleccionados.remove(p.id);
+                                  }
+                                }),
+                              );
+                            }).toList(),
                           ),
-                        )
-                      else
-                        _Tabla(
-                          filas: filas,
-                          elegidos: elegidos,
-                          totales: totales,
-                        ),
-                      const SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                          if (elegidos.length < 2)
+                            const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text(
+                                  'Toca dos o más proveedores arriba para compararlos.',
+                                  style: TextStyle(color: Colors.grey)),
+                            )
+                          else if (filas.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Los proveedores elegidos no comparten ningún producto '
+                                'con precio. Para compararlos, registra precios de un '
+                                'mismo producto en cada uno de ellos '
+                                '(o elige otros proveedores).',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                            )
+                          else
+                            _Tabla(
+                              filas: filas,
+                              elegidos: elegidos,
+                              totales: totales,
+                            ),
+                          const SizedBox(height: 16),
+                          if (elegidos.length >= 2 && filas.isNotEmpty)
+                            _Resumen(elegidos: elegidos, totales: totales, mapaProv: mapaProv),
+                        ],
+                      ),
+                      // Boton PDF, solo si hay comparacion valida.
                       if (elegidos.length >= 2 && filas.isNotEmpty)
-                        _Resumen(elegidos: elegidos, totales: totales, mapaProv: mapaProv),
+                        Positioned(
+                          right: 16,
+                          bottom: 16,
+                          child: FloatingActionButton.extended(
+                            onPressed: () =>
+                                _exportarPdf(elegidos, filas, totales),
+                            icon: const Icon(Icons.picture_as_pdf),
+                            label: const Text('PDF'),
+                          ),
+                        ),
                     ],
                   );
                 },
@@ -154,6 +173,99 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
       ),
     );
   }
+
+  /// Genera el PDF de la comparativa: tabla producto a producto, totales y
+  /// el resumen de quien es el mas barato en conjunto.
+  Future<void> _exportarPdf(
+    List<Proveedor> elegidos,
+    List<_FilaComp> filas,
+    Map<String, double> totales,
+  ) async {
+    // Mejor y peor en total, para el resumen.
+    String? mejorId;
+    String? peorId;
+    for (final p in elegidos) {
+      final t = totales[p.id]!;
+      if (mejorId == null || t < totales[mejorId]!) mejorId = p.id;
+      if (peorId == null || t > totales[peorId]!) peorId = p.id;
+    }
+
+    final fuente = await PdfGoogleFonts.robotoRegular();
+    final fuenteBold = await PdfGoogleFonts.robotoBold();
+
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(base: fuente, bold: fuenteBold),
+    );
+
+    // Cabeceras: Producto + un proveedor por columna.
+    final headers = <String>['Producto', ...elegidos.map((p) => p.nombre)];
+
+    // Filas de producto.
+    final data = <List<String>>[];
+    for (final f in filas) {
+      final unidad = f.producto.unidadBase.nombre;
+      final fila = <String>[f.producto.nombre];
+      for (final p in elegidos) {
+        fila.add('${euros3(f.precios[p.id]!)}/$unidad');
+      }
+      data.add(fila);
+    }
+    // Fila de totales.
+    final filaTot = <String>['TOTAL compra'];
+    for (final p in elegidos) {
+      filaTot.add(euros(totales[p.id]!));
+    }
+    data.add(filaTot);
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (ctx) => [
+          pw.Header(
+            level: 0,
+            child: pw.Text('Comparativa de proveedores',
+                style: pw.TextStyle(
+                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Text('Generada el ${fecha(DateTime.now())}'),
+          pw.SizedBox(height: 4),
+          pw.Text('Proveedores: ${elegidos.map((p) => p.nombre).join(", ")}',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          pw.SizedBox(height: 12),
+          pw.Table.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerDecoration:
+                const pw.BoxDecoration(color: PdfColors.grey300),
+            cellAlignment: pw.Alignment.centerRight,
+            cellAlignments: {0: pw.Alignment.centerLeft},
+            headers: headers,
+            data: data,
+          ),
+          pw.SizedBox(height: 16),
+          if (mejorId != null && peorId != null) ...[
+            pw.Divider(),
+            pw.Text(
+              'Más barato en conjunto: ${_nombre(elegidos, mejorId)} '
+              '(${euros(totales[mejorId]!)})',
+              style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, fontSize: 13),
+            ),
+            if ((totales[peorId]! - totales[mejorId]!) > 0.005)
+              pw.Text(
+                'Ahorro frente a ${_nombre(elegidos, peorId)}: '
+                '${euros(totales[peorId]! - totales[mejorId]!)}',
+                style: const pw.TextStyle(color: PdfColors.green800),
+              ),
+          ],
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (format) async => doc.save());
+  }
+
+  String _nombre(List<Proveedor> provs, String id) =>
+      provs.firstWhere((p) => p.id == id).nombre;
 }
 
 class _FilaComp {
