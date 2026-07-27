@@ -97,12 +97,6 @@ class _InformesScreenState extends State<InformesScreen> {
                       final totalAhorro =
                           grupos.fold<double>(0, (s, g) => s + g.ahorro);
 
-                      // Comparacion del mes en curso con el anterior (solo en
-                      // la vista por mes, donde los grupos van del mas reciente
-                      // al mas antiguo).
-                      final bool esPorMes = _agrupacion == AgrupacionInforme.mes;
-                      final bool hayDosMeses = esPorMes && grupos.length >= 2;
-
                       return Column(
                         children: [
                           Padding(
@@ -127,16 +121,6 @@ class _InformesScreenState extends State<InformesScreen> {
                                   setState(() => _agrupacion = s.first),
                             ),
                           ),
-                          // Comparativa mes actual vs anterior.
-                          if (hayDosMeses)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: _ComparativaMes(
-                                actual: grupos[0],
-                                anterior: grupos[1],
-                              ),
-                            ),
                           Padding(
                             padding:
                                 const EdgeInsets.symmetric(horizontal: 12),
@@ -162,17 +146,9 @@ class _InformesScreenState extends State<InformesScreen> {
                             child: ListView(
                               padding:
                                   const EdgeInsets.fromLTRB(12, 8, 12, 90),
-                              children: [
-                                for (int i = 0; i < grupos.length; i++)
-                                  _FilaGrupo(
-                                    grupo: grupos[i],
-                                    // En la vista por mes, comparar con el
-                                    // grupo siguiente (mes anterior).
-                                    anterior: (esPorMes && i + 1 < grupos.length)
-                                        ? grupos[i + 1]
-                                        : null,
-                                  ),
-                              ],
+                              children: grupos
+                                  .map((g) => _FilaGrupo(grupo: g))
+                                  .toList(),
                             ),
                           ),
                         ],
@@ -322,134 +298,17 @@ class _Metrica extends StatelessWidget {
   }
 }
 
-/// Tarjeta que compara el mes en curso con el anterior (gasto y ahorro).
-class _ComparativaMes extends StatelessWidget {
-  final GrupoInforme actual;
-  final GrupoInforme anterior;
-  const _ComparativaMes({required this.actual, required this.anterior});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 4),
-      color: Colors.blue.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${actual.etiqueta} vs ${anterior.etiqueta}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 8),
-            _linea(
-              context,
-              'Gasto',
-              actual.gastado,
-              anterior.gastado,
-              // En gasto, bajar es bueno (verde), subir es malo (rojo).
-              subirEsBueno: false,
-            ),
-            const SizedBox(height: 4),
-            _linea(
-              context,
-              'Ahorro',
-              actual.ahorro,
-              anterior.ahorro,
-              // En ahorro, subir es bueno.
-              subirEsBueno: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _linea(BuildContext context, String titulo, double actualV,
-      double anteriorV,
-      {required bool subirEsBueno}) {
-    final dif = actualV - anteriorV;
-    final pct = anteriorV.abs() > 0.005 ? (dif / anteriorV.abs()) * 100 : null;
-    final sube = dif > 0.005;
-    final baja = dif < -0.005;
-    final bueno = (sube && subirEsBueno) || (baja && !subirEsBueno);
-    final color = (!sube && !baja)
-        ? Colors.grey
-        : (bueno ? Colors.green.shade700 : Colors.red.shade700);
-    final icono = sube
-        ? Icons.arrow_upward
-        : baja
-            ? Icons.arrow_downward
-            : Icons.remove;
-
-    final texto = (!sube && !baja)
-        ? 'igual que el mes pasado'
-        : pct == null
-            ? '${sube ? "+" : "-"}${euros(dif.abs())} vs mes pasado'
-            : 'un ${pct.abs().toStringAsFixed(0)}% ${sube ? "más" : "menos"} '
-                'que el mes pasado';
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 60,
-          child: Text(titulo, style: const TextStyle(fontSize: 13)),
-        ),
-        Text(euros(actualV),
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(width: 8),
-        Icon(icono, size: 16, color: color),
-        Expanded(
-          child: Text(texto,
-              style: TextStyle(fontSize: 12, color: color),
-              overflow: TextOverflow.ellipsis),
-        ),
-      ],
-    );
-  }
-}
-
 class _FilaGrupo extends StatelessWidget {
   final GrupoInforme grupo;
-  final GrupoInforme? anterior; // mes anterior, para la flecha (solo por mes)
-  const _FilaGrupo({required this.grupo, this.anterior});
+  const _FilaGrupo({required this.grupo});
 
   @override
   Widget build(BuildContext context) {
-    // Variacion de gasto respecto al mes anterior.
-    Widget? flecha;
-    if (anterior != null && anterior!.gastado > 0.005) {
-      final dif = grupo.gastado - anterior!.gastado;
-      final pct = (dif / anterior!.gastado) * 100;
-      final sube = dif > 0.005;
-      final baja = dif < -0.005;
-      if (sube || baja) {
-        final color = sube ? Colors.red.shade700 : Colors.green.shade700;
-        flecha = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(sube ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 13, color: color),
-            Text('${pct.abs().toStringAsFixed(0)}%',
-                style: TextStyle(fontSize: 11, color: color)),
-          ],
-        );
-      }
-    }
-
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        title: Row(
-          children: [
-            Text(grupo.etiqueta,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            if (flecha != null) ...[
-              const SizedBox(width: 8),
-              flecha,
-            ],
-          ],
-        ),
+        title: Text(grupo.etiqueta,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
             '${grupo.nCompras} compras · ${grupo.nLineas} líneas · gastado ${euros(grupo.gastado)}'),
         trailing: Column(
