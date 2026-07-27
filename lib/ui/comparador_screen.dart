@@ -71,26 +71,44 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
                       .where((p) => _seleccionados.contains(p.id))
                       .toList();
 
-                  // Productos que TODOS los elegidos tienen.
+                  // Todos los productos que al menos UN elegido tiene.
+                  // El total solo suma los que TODOS tienen (comparacion justa).
                   final filas = <_FilaComp>[];
                   final totales = <String, double>{
                     for (final p in elegidos) p.id: 0
                   };
-                  for (final c in comparativas) {
-                    final precioPorProv = <String, double>{
-                      for (final o in c.ofertas) o.proveedor.id: o.precioUnitario
-                    };
-                    final todos = elegidos
-                        .every((p) => precioPorProv.containsKey(p.id));
-                    if (!todos || elegidos.length < 2) continue;
-                    filas.add(_FilaComp(
-                      producto: c.producto,
-                      precios: precioPorProv,
-                    ));
-                    for (final p in elegidos) {
-                      totales[p.id] =
-                          totales[p.id]! + precioPorProv[p.id]! * c.producto.cantidadEfectiva;
+                  int nComunes = 0;
+                  if (elegidos.length >= 2) {
+                    for (final c in comparativas) {
+                      final precioPorProv = <String, double>{
+                        for (final o in c.ofertas) o.proveedor.id: o.precioUnitario
+                      };
+                      // ¿Algun elegido tiene este producto?
+                      final algunElegido =
+                          elegidos.any((p) => precioPorProv.containsKey(p.id));
+                      if (!algunElegido) continue;
+                      final todos = elegidos
+                          .every((p) => precioPorProv.containsKey(p.id));
+                      filas.add(_FilaComp(
+                        producto: c.producto,
+                        precios: precioPorProv,
+                        comun: todos,
+                      ));
+                      if (todos) {
+                        nComunes++;
+                        for (final p in elegidos) {
+                          totales[p.id] = totales[p.id]! +
+                              precioPorProv[p.id]! * c.producto.cantidadEfectiva;
+                        }
+                      }
                     }
+                    // Comunes primero, luego el resto; alfabetico dentro de cada.
+                    filas.sort((a, b) {
+                      if (a.comun != b.comun) return a.comun ? -1 : 1;
+                      return a.producto.nombre
+                          .toLowerCase()
+                          .compareTo(b.producto.nombre.toLowerCase());
+                    });
                   }
 
                   return Stack(
@@ -140,12 +158,21 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
                                 style: TextStyle(color: Colors.grey.shade700),
                               ),
                             )
-                          else
+                          else ...[
                             _Tabla(
                               filas: filas,
                               elegidos: elegidos,
                               totales: totales,
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'El TOTAL compara solo los $nComunes productos que '
+                              'tienen todos los proveedores elegidos. El guion (—) '
+                              'indica que ese proveedor no tiene ese producto.',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey.shade700),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           if (elegidos.length >= 2 && filas.isNotEmpty)
                             _Resumen(elegidos: elegidos, totales: totales, mapaProv: mapaProv),
@@ -206,7 +233,9 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
       final unidad = f.producto.unidadBase.nombre;
       final fila = <String>[f.producto.nombre];
       for (final p in elegidos) {
-        fila.add('${euros3(f.precios[p.id]!)}/$unidad');
+        fila.add(f.precios.containsKey(p.id)
+            ? '${euros3(f.precios[p.id]!)}/$unidad'
+            : '—');
       }
       data.add(fila);
     }
@@ -271,7 +300,8 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
 class _FilaComp {
   final Producto producto;
   final Map<String, double> precios; // provId -> precio unitario
-  _FilaComp({required this.producto, required this.precios});
+  final bool comun; // lo tienen todos los proveedores elegidos
+  _FilaComp({required this.producto, required this.precios, this.comun = true});
 }
 
 class _Tabla extends StatelessWidget {
@@ -302,13 +332,31 @@ class _Tabla extends StatelessWidget {
         ],
         rows: [
           ...filas.map((f) {
-            final valores = elegidos.map((p) => f.precios[p.id]!).toList();
-            final minV = valores.reduce((a, b) => a < b ? a : b);
-            final maxV = valores.reduce((a, b) => a > b ? a : b);
+            // Solo los proveedores que TIENEN precio para este producto.
+            final valores = elegidos
+                .where((p) => f.precios.containsKey(p.id))
+                .map((p) => f.precios[p.id]!)
+                .toList();
+            final minV = valores.isEmpty
+                ? 0.0
+                : valores.reduce((a, b) => a < b ? a : b);
+            final maxV = valores.isEmpty
+                ? 0.0
+                : valores.reduce((a, b) => a > b ? a : b);
             final unidad = f.producto.unidadBase.nombre;
             return DataRow(cells: [
-              DataCell(Text(f.producto.nombre)),
+              DataCell(Text(
+                f.producto.nombre,
+                style: TextStyle(
+                    color: f.comun ? null : Colors.grey.shade600,
+                    fontStyle: f.comun ? null : FontStyle.italic),
+              )),
               ...elegidos.map((p) {
+                if (!f.precios.containsKey(p.id)) {
+                  // Este proveedor no tiene el producto.
+                  return const DataCell(
+                      Text('—', style: TextStyle(color: Colors.grey)));
+                }
                 final v = f.precios[p.id]!;
                 final esMin = v == minV && minV != maxV;
                 final esMax = v == maxV && minV != maxV;
