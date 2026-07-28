@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../models/precio.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
-import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
-import '../services/hoja_pedido_service.dart';
 import 'categorias.dart';
 import 'producto_detalle_screen.dart';
 
@@ -19,7 +16,6 @@ class ProductosScreen extends StatefulWidget {
 
 class _ProductosScreenState extends State<ProductosScreen> {
   String _busqueda = '';
-  bool _generando = false;
 
   FirestoreService get db => widget.db;
 
@@ -34,53 +30,9 @@ class _ProductosScreenState extends State<ProductosScreen> {
     return false;
   }
 
-  /// Genera la hoja PDF con los productos marcados (enLista).
-  Future<void> _hojaPedido() async {
-    setState(() => _generando = true);
-    try {
-      final productos = await db.productos().first;
-      final precios = await db.precios().first;
-      final proveedores = await db.proveedores().first;
-      final comparativas = AnaliticaService.compararTodo(
-          productos, precios, proveedores);
-      final marcados = comparativas.where((c) => c.producto.enLista).length;
-      if (marcados == 0) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'No hay productos marcados en la lista. Márcalos en la pestaña Lista.')));
-        }
-        return;
-      }
-      await HojaPedidoService.generar(comparativas);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error al generar la hoja: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _generando = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Productos'),
-        actions: [
-          IconButton(
-            tooltip: 'Hoja de pedido para imprimir',
-            icon: _generando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.print),
-            onPressed: _generando ? null : _hojaPedido,
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editar(context, null),
         icon: const Icon(Icons.add),
