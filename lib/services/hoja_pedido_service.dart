@@ -3,7 +3,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/comparativa.dart';
-import 'formato.dart';
+import '../models/producto.dart';
+import '../ui/formato.dart';
 
 /// Genera una hoja PDF imprimible con los productos marcados (enLista),
 /// agrupados por categoría y en orden alfabético, con su formato y su último
