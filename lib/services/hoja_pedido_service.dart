@@ -6,28 +6,55 @@ import '../models/comparativa.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
 
-/// Genera una hoja PDF imprimible con los productos marcados (enLista),
-/// agrupados por categoría y en orden alfabético, con su formato y su último
-/// mejor precio de orientación, y una casilla vacía para escribir la cantidad
-/// a mano. Pensada para imprimir, rellenar en la cocina y (más adelante)
-/// fotografiar.
+/// Genera la HOJA DE PEDIDO imprimible: solo los productos con cantidad puesta
+/// (el pedido real), agrupados por el proveedor más barato de cada uno, con la
+/// cantidad tal cual (kg o cajas según lo pedido) y su precio de orientación.
+/// Es una copia en papel del pedido que ya montaste en la app.
 class HojaPedidoService {
   static Future<void> generar(List<ComparativaProducto> comparativas) async {
     final fuente = await PdfGoogleFonts.robotoRegular();
     final fuenteBold = await PdfGoogleFonts.robotoBold();
 
-    // Solo los productos marcados en la lista.
-    final enLista = comparativas.where((c) => c.producto.enLista).toList();
+    // Productos en lista Y con cantidad puesta (tengan o no precio).
+    final pedido = comparativas.where((c) {
+      final p = c.producto;
+      return p.enLista && p.cantidadEfectiva > 0;
+    }).toList();
 
-    // Agrupar por categoría.
-    final Map<String, List<ComparativaProducto>> porCategoria = {};
-    for (final c in enLista) {
-      porCategoria.putIfAbsent(c.producto.categoria, () => []).add(c);
+    // Necesitamos los nombres de proveedores para los asignados a mano.
+    final Map<String, String> nombreProv = {};
+    for (final c in comparativas) {
+      for (final o in c.ofertas) {
+        nombreProv[o.proveedor.id] = o.proveedor.nombre;
+      }
     }
-    // Ordenar categorías alfabéticamente y productos dentro de cada una.
-    final categorias = porCategoria.keys.toList()..sort();
-    for (final cat in categorias) {
-      porCategoria[cat]!.sort((a, b) => a.producto.nombre
+
+    // Agrupar: con precio -> proveedor mas barato; sin precio -> asignado.
+    // Clave especial 'SIN' para los que no tienen ni precio ni asignado.
+    final Map<String, List<ComparativaProducto>> porProveedor = {};
+    for (final c in pedido) {
+      String pid;
+      if (c.tieneDatos) {
+        pid = c.masBarato!.proveedor.id;
+        nombreProv[pid] = c.masBarato!.proveedor.nombre;
+      } else if (c.producto.proveedorAsignadoId.isNotEmpty) {
+        pid = c.producto.proveedorAsignadoId;
+      } else {
+        pid = 'SIN';
+      }
+      porProveedor.putIfAbsent(pid, () => []).add(c);
+    }
+    // Ordenar proveedores por nombre y productos dentro por nombre.
+    final provIds = porProveedor.keys.toList()
+      ..sort((a, b) {
+        if (a == 'SIN') return 1;
+        if (b == 'SIN') return -1;
+        return (nombreProv[a] ?? '')
+            .toLowerCase()
+            .compareTo((nombreProv[b] ?? '').toLowerCase());
+      });
+    for (final id in provIds) {
+      porProveedor[id]!.sort((a, b) => a.producto.nombre
           .toLowerCase()
           .compareTo(b.producto.nombre.toLowerCase()));
     }
@@ -51,82 +78,87 @@ class HojaPedidoService {
           widgets.add(
             pw.Text(
               'Generada el ${fecha(DateTime.now())} · '
-              '${enLista.length} productos · precios de orientación',
+              '${pedido.length} productos',
               style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
             ),
           );
           widgets.add(pw.SizedBox(height: 12));
 
-          for (final cat in categorias) {
-            // Título de categoría.
+          if (pedido.isEmpty) {
+            widgets.add(
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(20),
+                child: pw.Text(
+                  'No hay productos con cantidad en el pedido. Monta la lista '
+                  '(pon cantidades) y vuelve a generar la hoja.',
+                  style: const pw.TextStyle(color: PdfColors.grey700),
+                ),
+              ),
+            );
+            return widgets;
+          }
+
+          for (final pid in provIds) {
+            final nombre = pid == 'SIN'
+                ? 'Sin proveedor asignado'
+                : (nombreProv[pid] ?? 'Proveedor');
+            // Cabecera del proveedor.
             widgets.add(
               pw.Container(
                 width: double.infinity,
-                margin: const pw.EdgeInsets.only(top: 8, bottom: 4),
+                margin: const pw.EdgeInsets.only(top: 10, bottom: 4),
                 padding:
-                    const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+                    const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
                 color: PdfColors.grey200,
-                child: pw.Text(cat.toUpperCase(),
+                child: pw.Text(nombre.toUpperCase(),
                     style: pw.TextStyle(
-                        fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
               ),
             );
-            // Tabla de productos de esta categoría.
+            // Tabla de productos de este proveedor.
             widgets.add(
               pw.Table(
                 border:
                     pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
                 columnWidths: {
-                  0: const pw.FlexColumnWidth(5), // producto
-                  1: const pw.FlexColumnWidth(2), // formato
-                  2: const pw.FlexColumnWidth(2.4), // precio orient.
-                  3: const pw.FlexColumnWidth(2.6), // cantidad (vacío)
+                  0: const pw.FlexColumnWidth(6), // producto
+                  1: const pw.FlexColumnWidth(3), // cantidad a pedir
+                  2: const pw.FlexColumnWidth(3), // precio orient.
                 },
                 children: [
-                  // Cabecera de la tabla.
                   pw.TableRow(
                     decoration:
                         const pw.BoxDecoration(color: PdfColors.grey100),
                     children: [
                       _cel('Producto', bold: true),
-                      _cel('Formato', bold: true),
+                      _cel('Pedir', bold: true),
                       _cel('Últ. precio', bold: true),
-                      _cel('Cantidad', bold: true),
                     ],
                   ),
-                  ...porCategoria[cat]!.map((c) {
+                  ...porProveedor[pid]!.map((c) {
                     final p = c.producto;
-                    final barato = c.masBarato;
-                    // Formato del mas barato; si no tiene, su unidad base.
-                    final formato = (barato != null && barato.tieneFormato)
-                        ? barato.formato!
-                        : p.unidadBase.nombre;
-                    final precio = barato != null
-                        ? '${euros3(barato.precioUnitario)}/${p.unidadBase.nombre}'
+                    final cant = p.cantidadEfectiva;
+                    // Texto de cantidad: cajas o unidad base.
+                    final String pedirTxt;
+                    if (p.pedirEnFormato && p.formatoSemana.isNotEmpty) {
+                      final f = p.formatoSemana;
+                      pedirTxt = '${_n(cant)} $f${cant == 1 ? "" : "s"}';
+                    } else {
+                      pedirTxt = '${_n(cant)} ${p.unidadBase.nombre}';
+                    }
+                    // Precio de orientacion, o guion si aun no tiene.
+                    final precio = c.tieneDatos
+                        ? '${euros3(c.masBarato!.precioUnitario)}/${p.unidadBase.nombre}'
                         : '—';
                     return pw.TableRow(
                       children: [
                         _cel(p.nombre),
-                        _cel(formato),
+                        _cel(pedirTxt),
                         _cel(precio),
-                        _cel(''), // casilla vacía para la cantidad
                       ],
                     );
                   }),
                 ],
-              ),
-            );
-          }
-
-          if (enLista.isEmpty) {
-            widgets.add(
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(20),
-                child: pw.Text(
-                  'No hay productos marcados en la lista. Marca productos '
-                  '(en la pestaña Lista) y vuelve a generar la hoja.',
-                  style: const pw.TextStyle(color: PdfColors.grey700),
-                ),
               ),
             );
           }
@@ -138,6 +170,8 @@ class HojaPedidoService {
 
     await Printing.layoutPdf(onLayout: (format) async => doc.save());
   }
+
+  static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 
   static pw.Widget _cel(String texto, {bool bold = false}) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 5),

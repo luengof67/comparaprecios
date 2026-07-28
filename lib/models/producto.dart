@@ -68,6 +68,9 @@ class Producto {
   /// Nombre del formato elegido esta semana ("caja", "docena", "estuche"...).
   /// Solo tiene sentido si pedirEnFormato es true. Vacío = sin formato.
   final String formatoSemana;
+  /// Proveedor al que se le pide este producto cuando aún no tiene precio
+  /// (solo se usa para colocarlo en la hoja de pedido). Vacío = sin asignar.
+  final String proveedorAsignadoId;
 
   /// Cantidad que manda en la lista: la de semana si está puesta, si no la habitual.
   double get cantidadEfectiva =>
@@ -92,6 +95,7 @@ class Producto {
     this.cantidadSemana = 0,
     this.pedirEnFormato = false,
     this.formatoSemana = '',
+    this.proveedorAsignadoId = '',
     this.enLista = true,
     this.alias = const [],
     this.notas,
@@ -109,6 +113,7 @@ class Producto {
       cantidadSemana: (d['cantidadSemana'] ?? 0).toDouble(),
       pedirEnFormato: d['pedirEnFormato'] ?? false,
       formatoSemana: (d['formatoSemana'] ?? '').toString(),
+      proveedorAsignadoId: (d['proveedorAsignadoId'] ?? '').toString(),
       enLista: d['enLista'] ?? true,
       alias: rawAlias
           .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
@@ -126,6 +131,7 @@ class Producto {
         'cantidadSemana': cantidadSemana,
         'pedirEnFormato': pedirEnFormato,
         'formatoSemana': formatoSemana,
+        'proveedorAsignadoId': proveedorAsignadoId,
         'enLista': enLista,
         'alias': alias.map((a) => a.toMap()).toList(),
         'notas': notas,

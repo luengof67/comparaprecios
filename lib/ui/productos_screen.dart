@@ -188,6 +188,7 @@ class _ProductoFormState extends State<_ProductoForm> {
   late final TextEditingController _cantidad;
   late UnidadBase _unidad;
   late List<AliasProducto> _alias;
+  String _proveedorAsignado = ''; // para la hoja cuando no hay precio
 
   @override
   void initState() {
@@ -198,6 +199,7 @@ class _ProductoFormState extends State<_ProductoForm> {
     _cantidad = TextEditingController(text: ch > 0 ? _num(ch) : '');
     _unidad = widget.existente?.unidadBase ?? UnidadBase.kg;
     _alias = List<AliasProducto>.from(widget.existente?.alias ?? const []);
+    _proveedorAsignado = widget.existente?.proveedorAsignadoId ?? '';
   }
 
   String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
@@ -222,6 +224,9 @@ class _ProductoFormState extends State<_ProductoForm> {
       cantidadHabitual: cantidad,
       // Conservamos lo que no edita este formulario:
       cantidadSemana: base?.cantidadSemana ?? 0,
+      pedirEnFormato: base?.pedirEnFormato ?? false,
+      formatoSemana: base?.formatoSemana ?? '',
+      proveedorAsignadoId: _proveedorAsignado,
       enLista: base?.enLista ?? true,
       alias: _alias,
       notas: base?.notas,
@@ -317,6 +322,30 @@ class _ProductoFormState extends State<_ProductoForm> {
               helperText: 'Opcional. Sirve para calcular el coste y ahorro reales.',
               border: const OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
+          StreamBuilder<List<Proveedor>>(
+            stream: widget.db.proveedores(),
+            builder: (context, snap) {
+              final provs = snap.data ?? [];
+              return DropdownButtonFormField<String>(
+                initialValue: _proveedorAsignado.isEmpty ? null : _proveedorAsignado,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Proveedor para la hoja (si no tiene precio)',
+                  helperText:
+                      'Opcional. Solo se usa para colocarlo en la hoja de pedido '
+                      'mientras no tenga precio registrado.',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Sin asignar')),
+                  ...provs.map((p) =>
+                      DropdownMenuItem(value: p.id, child: Text(p.nombre))),
+                ],
+                onChanged: (v) => setState(() => _proveedorAsignado = v ?? ''),
+              );
+            },
           ),
           const SizedBox(height: 16),
           const Divider(),
