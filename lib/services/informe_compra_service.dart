@@ -14,10 +14,11 @@ class LineaOptima {
   final double precioUnitario;
   final String? formato; // "caja", "saco"... si se pide por formato
   final bool enFormato; // true = la cantidad son cajas (coste por confirmar)
+  final bool sinPrecio; // true = producto sin precio (va con guion)
 
-  /// Subtotal solo si se pide en unidad base; en cajas no se puede saber aun.
-  double get subtotal => enFormato ? 0 : cantidad * precioUnitario;
-  bool get tieneCoste => !enFormato;
+  /// Subtotal solo si se pide en unidad base y tiene precio.
+  double get subtotal => (enFormato || sinPrecio) ? 0 : cantidad * precioUnitario;
+  bool get tieneCoste => !enFormato && !sinPrecio;
 
   LineaOptima({
     required this.producto,
@@ -26,6 +27,7 @@ class LineaOptima {
     required this.precioUnitario,
     this.formato,
     this.enFormato = false,
+    this.sinPrecio = false,
   });
 
   /// Texto de lo que hay que pedir: "2 cajas" o "12 kg".
@@ -36,7 +38,12 @@ class LineaOptima {
     return '${_n(cantidad)} $unidad';
   }
 
-  String get textoSubtotal => enFormato ? 's/albarán' : euros(subtotal);
+  /// Texto del precio unitario: guion si no tiene precio.
+  String get textoPrecio =>
+      sinPrecio ? '—' : '${euros3(precioUnitario)}/$unidad';
+
+  String get textoSubtotal =>
+      sinPrecio ? '—' : (enFormato ? 's/albarán' : euros(subtotal));
 
   static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 }
@@ -48,32 +55,70 @@ class InformeCompraService {
     // Fuentes con soporte del símbolo del euro (€).
     final fuenteNormal = await PdfGoogleFonts.robotoRegular();
     final fuenteNegrita = await PdfGoogleFonts.robotoBold();
-    // Agrupa por proveedor más barato.
+
+    // Nombres de proveedores (para los asignados a mano sin precio).
+    final nombreProv = <String, String>{};
+    for (final c in comparativas) {
+      for (final o in c.ofertas) {
+        nombreProv[o.proveedor.id] = o.proveedor.nombre;
+      }
+    }
+
+    // Agrupa por proveedor. Clave especial 'SIN' = sin proveedor asignado.
     final porProveedor = <String, List<LineaOptima>>{};
     double totalOptimo = 0;
     double totalCaro = 0;
 
     for (final c in comparativas) {
       final cant = c.producto.cantidadEfectiva;
-      if (cant <= 0 || !c.tieneDatos) continue;
-      // Oferta más barata.
-      final barata = c.ofertas.reduce(
-          (a, b) => a.precioUnitario <= b.precioUnitario ? a : b);
-      final enFormato = c.producto.pedirEnFormato && barata.tieneFormato;
-      final linea = LineaOptima(
-        producto: c.producto.nombre,
-        cantidad: cant,
-        unidad: c.producto.unidadBase.nombre,
-        precioUnitario: barata.precioUnitario,
-        formato: barata.tieneFormato ? barata.formato : null,
-        enFormato: enFormato,
-      );
-      porProveedor.putIfAbsent(barata.proveedor.nombre, () => []).add(linea);
-      if (linea.tieneCoste) {
-        totalOptimo += linea.subtotal;
-        totalCaro += c.precioMax * cant;
+      if (cant <= 0) continue;
+
+      if (c.tieneDatos) {
+        // CON precio: al proveedor más barato.
+        final barata = c.ofertas.reduce(
+            (a, b) => a.precioUnitario <= b.precioUnitario ? a : b);
+        final enFormato = c.producto.pedirEnFormato && barata.tieneFormato;
+        final linea = LineaOptima(
+          producto: c.producto.nombre,
+          cantidad: cant,
+          unidad: c.producto.unidadBase.nombre,
+          precioUnitario: barata.precioUnitario,
+          formato: barata.tieneFormato ? barata.formato : null,
+          enFormato: enFormato,
+        );
+        porProveedor.putIfAbsent(barata.proveedor.nombre, () => []).add(linea);
+        if (linea.tieneCoste) {
+          totalOptimo += linea.subtotal;
+          totalCaro += c.precioMax * cant;
+        }
+      } else {
+        // SIN precio: al proveedor asignado, o al bloque 'Sin asignar'.
+        final asignado = c.producto.proveedorAsignadoId;
+        final clave = (asignado.isNotEmpty && nombreProv.containsKey(asignado))
+            ? nombreProv[asignado]!
+            : 'Sin proveedor asignado';
+        final enFormato =
+            c.producto.pedirEnFormato && c.producto.formatoSemana.isNotEmpty;
+        final linea = LineaOptima(
+          producto: c.producto.nombre,
+          cantidad: cant,
+          unidad: c.producto.unidadBase.nombre,
+          precioUnitario: 0,
+          formato: enFormato ? c.producto.formatoSemana : null,
+          enFormato: enFormato,
+          sinPrecio: true,
+        );
+        porProveedor.putIfAbsent(clave, () => []).add(linea);
       }
     }
+
+    // Ordenar: proveedores con nombre primero, 'Sin proveedor asignado' al final.
+    final claves = porProveedor.keys.toList()
+      ..sort((a, b) {
+        if (a == 'Sin proveedor asignado') return 1;
+        if (b == 'Sin proveedor asignado') return -1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
 
     final ahorro = totalCaro - totalOptimo;
 
@@ -83,6 +128,7 @@ class InformeCompraService {
         bold: fuenteNegrita,
       ),
     );
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -96,21 +142,23 @@ class InformeCompraService {
           pw.SizedBox(height: 4),
           pw.Text(
             'Los importes de productos que se piden por caja/saco son estimados '
-            '(el peso real se ajusta al recibir el albarán).',
+            '(el peso real se ajusta al recibir el albarán). El guion (—) indica '
+            'un producto sin precio registrado todavía.',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
           pw.SizedBox(height: 12),
           // Una sección por proveedor.
-          ...porProveedor.entries.map((e) {
-            final lineas = e.value;
+          ...claves.map((clave) {
+            final lineas = porProveedor[clave]!;
             final subtotal =
                 lineas.fold<double>(0, (s, l) => s + l.subtotal);
-            final hayCajas = lineas.any((l) => !l.tieneCoste);
+            final hayCajas = lineas.any((l) => l.enFormato);
+            final haySinPrecio = lineas.any((l) => l.sinPrecio);
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.SizedBox(height: 10),
-                pw.Text(e.key,
+                pw.Text(clave,
                     style: pw.TextStyle(
                         fontSize: 14, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 4),
@@ -129,7 +177,7 @@ class InformeCompraService {
                       .map((l) => [
                             l.producto,
                             l.pedido,
-                            '${euros3(l.precioUnitario)}/${l.unidad}',
+                            l.textoPrecio,
                             l.textoSubtotal,
                           ])
                       .toList(),
@@ -138,8 +186,9 @@ class InformeCompraService {
                 pw.Align(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
-                      'Subtotal ${e.key}: ${euros(subtotal)}'
-                      '${hayCajas ? " (+ lo que se pide por caja)" : ""}',
+                      'Subtotal $clave: ${euros(subtotal)}'
+                      '${hayCajas ? " (+ lo que se pide por caja)" : ""}'
+                      '${haySinPrecio ? " (+ productos sin precio)" : ""}',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 ),
               ],
