@@ -126,10 +126,14 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
         if (!analisis.formatos.contains(f)) f,
     ];
 
+    // Si ya estaba en la lista, precargar su cantidad y formato.
+    final yaPuesto = _anadidos[p.id];
     final ctrl = TextEditingController(
-        text: p.cantidadHabitual > 0 ? _n(p.cantidadHabitual) : '');
-    String formatoElegido = p.unidadBase.nombre;
-
+        text: yaPuesto != null
+            ? _n(yaPuesto.cantidad)
+            : (p.cantidadHabitual > 0 ? _n(p.cantidadHabitual) : ''));
+    String formatoElegido = yaPuesto?.formato ?? p.unidadBase.nombre;
+        
     final resultado =
         await showDialog<({double cantidad, String formato})>(
       context: context,
@@ -229,6 +233,7 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
   Producto? _prod(String id) {
     for (final p in _catalogo) {
       if (p.id == id) return p;
+
     }
     return null;
   }
@@ -304,7 +309,35 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
                     trailing: yaEsta
                         ? const Icon(Icons.check, color: Colors.green)
                         : const Icon(Icons.add),
-                    onTap: yaEsta ? null : () => _elegir(p),
+                    onTap: () => _elegir(p),
+
+(Quita el yaEsta ? null :, así siempre abre el diálogo, tanto para añadir como para editar.)
+
+1b. En la lista de añadidos, que al tocar la fila también se pueda editar. Busca:
+
+dart
+                      return ListTile(
+                        title: Text(p?.nombre ?? '—'),
+                        subtitle: Text('${_n(v.cantidad)} ${v.formato}'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _quitar(e.key),
+                        ),
+                      );
+
+y cámbialo por:
+
+dart
+                      return ListTile(
+                        title: Text(p?.nombre ?? '—'),
+                        subtitle: Text('${_n(v.cantidad)} ${v.formato} · toca para editar'),
+                        onTap: p == null ? null : () => _elegir(p),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _quitar(e.key),
+                        ),
+                      );
+
                   );
                 }).toList(),
               ),
