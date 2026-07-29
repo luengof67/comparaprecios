@@ -126,9 +126,13 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
         if (!analisis.formatos.contains(f)) f,
     ];
 
+    // Si ya estaba en la lista, precargar su cantidad y formato.
+    final yaPuesto = _anadidos[p.id];
     final ctrl = TextEditingController(
-        text: p.cantidadHabitual > 0 ? _n(p.cantidadHabitual) : '');
-    String formatoElegido = p.unidadBase.nombre;
+        text: yaPuesto != null
+            ? _n(yaPuesto.cantidad)
+            : (p.cantidadHabitual > 0 ? _n(p.cantidadHabitual) : ''));
+    String formatoElegido = yaPuesto?.formato ?? p.unidadBase.nombre;
 
     final resultado =
         await showDialog<({double cantidad, String formato})>(
@@ -304,7 +308,7 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
                     trailing: yaEsta
                         ? const Icon(Icons.check, color: Colors.green)
                         : const Icon(Icons.add),
-                    onTap: yaEsta ? null : () => _elegir(p),
+                    onTap: () => _elegir(p),
                   );
                 }).toList(),
               ),
@@ -344,7 +348,9 @@ class _MontarListaScreenState extends State<MontarListaScreen> {
                       final v = e.value;
                       return ListTile(
                         title: Text(p?.nombre ?? '—'),
-                        subtitle: Text('${_n(v.cantidad)} ${v.formato}'),
+                        subtitle:
+                            Text('${_n(v.cantidad)} ${v.formato} · toca para editar'),
+                        onTap: p == null ? null : () => _elegir(p),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () => _quitar(e.key),
