@@ -97,9 +97,6 @@ class _InformesScreenState extends State<InformesScreen> {
                       final totalAhorro =
                           grupos.fold<double>(0, (s, g) => s + g.ahorro);
 
-                      // Comparacion del mes en curso con el anterior (solo en
-                      // la vista por mes, donde los grupos van del mas reciente
-                      // al mas antiguo).
                       final bool esPorMes = _agrupacion == AgrupacionInforme.mes;
                       final bool hayDosMeses = esPorMes && grupos.length >= 2;
 
@@ -127,7 +124,6 @@ class _InformesScreenState extends State<InformesScreen> {
                                   setState(() => _agrupacion = s.first),
                             ),
                           ),
-                          // Comparativa mes actual vs anterior.
                           if (hayDosMeses)
                             Padding(
                               padding:
@@ -166,8 +162,6 @@ class _InformesScreenState extends State<InformesScreen> {
                                 for (int i = 0; i < grupos.length; i++)
                                   _FilaGrupo(
                                     grupo: grupos[i],
-                                    // En la vista por mes, comparar con el
-                                    // grupo siguiente (mes anterior).
                                     anterior: (esPorMes && i + 1 < grupos.length)
                                         ? grupos[i + 1]
                                         : null,
@@ -192,7 +186,6 @@ class _InformesScreenState extends State<InformesScreen> {
       ),
     );
   }
-
 
   /// Elige un mes con compras y genera el PDF de cierre de mes.
   Future<void> _informeMensual(BuildContext context) async {
@@ -251,55 +244,129 @@ class _InformesScreenState extends State<InformesScreen> {
     final totalGastado = grupos.fold<double>(0, (s, g) => s + g.gastado);
     final totalAhorro = grupos.fold<double>(0, (s, g) => s + g.ahorro);
 
+    // ¿Añadimos desglose de productos? Solo en mes y semana.
+    final bool conDesglose = _agrupacion == AgrupacionInforme.mes ||
+        _agrupacion == AgrupacionInforme.semana;
+
+    // Para el desglose: etiqueta de grupo -> (nombre producto -> gasto).
+    final desglose = <String, Map<String, double>>{};
+    if (conDesglose) {
+      for (final c in compras) {
+        final etiqueta = _etiquetaGrupo(c, _agrupacion);
+        final mapaProd = desglose.putIfAbsent(etiqueta, () => {});
+        for (final l in c.lineas) {
+          mapaProd.update(l.productoNombre, (v) => v + l.total,
+              ifAbsent: () => l.total);
+        }
+      }
+    }
+
     final doc = pw.Document();
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (ctx) => [
-          pw.Header(
-            level: 0,
-            child: pw.Text('Informe de compras · ${_etiquetaAgrupacion()}',
+        build: (ctx) {
+          final widgets = <pw.Widget>[
+            pw.Header(
+              level: 0,
+              child: pw.Text('Informe de compras · ${_etiquetaAgrupacion()}',
+                  style: pw.TextStyle(
+                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+            ),
+            pw.Text('Generado el ${fecha(DateTime.now())}'),
+            pw.SizedBox(height: 12),
+            pw.Table.fromTextArray(
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              headerDecoration:
+                  const pw.BoxDecoration(color: PdfColors.grey300),
+              cellAlignments: {
+                0: pw.Alignment.centerLeft,
+                1: pw.Alignment.centerRight,
+                2: pw.Alignment.centerRight,
+                3: pw.Alignment.centerRight,
+              },
+              headers: ['Grupo', 'Compras', 'Gastado', 'Ahorrado'],
+              data: grupos
+                  .map((g) => [
+                        g.etiqueta,
+                        g.nCompras.toString(),
+                        euros(g.gastado),
+                        euros(g.ahorro),
+                      ])
+                  .toList(),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Divider(),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('TOTAL gastado: ${euros(totalGastado)}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                pw.Text('TOTAL ahorrado: ${euros(totalAhorro)}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              ],
+            ),
+          ];
+
+          // Desglose de productos por grupo (solo mes/semana).
+          if (conDesglose) {
+            widgets.add(pw.SizedBox(height: 20));
+            widgets.add(pw.Text('Detalle por producto',
                 style: pw.TextStyle(
-                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          ),
-          pw.Text('Generado el ${fecha(DateTime.now())}'),
-          pw.SizedBox(height: 12),
-          pw.Table.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            headerDecoration:
-                const pw.BoxDecoration(color: PdfColors.grey300),
-            cellAlignments: {
-              0: pw.Alignment.centerLeft,
-              1: pw.Alignment.centerRight,
-              2: pw.Alignment.centerRight,
-              3: pw.Alignment.centerRight,
-            },
-            headers: ['Grupo', 'Compras', 'Gastado', 'Ahorrado'],
-            data: grupos
-                .map((g) => [
-                      g.etiqueta,
-                      g.nCompras.toString(),
-                      euros(g.gastado),
-                      euros(g.ahorro),
-                    ])
-                .toList(),
-          ),
-          pw.SizedBox(height: 16),
-          pw.Divider(),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('TOTAL gastado: ${euros(totalGastado)}',
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              pw.Text('TOTAL ahorrado: ${euros(totalAhorro)}',
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            ],
-          ),
-        ],
+                    fontSize: 15, fontWeight: pw.FontWeight.bold)));
+            for (final g in grupos) {
+              final prods = desglose[g.etiqueta];
+              if (prods == null || prods.isEmpty) continue;
+              final filas = prods.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value));
+              widgets.add(pw.SizedBox(height: 12));
+              widgets.add(pw.Text(g.etiqueta,
+                  style: pw.TextStyle(
+                      fontSize: 13, fontWeight: pw.FontWeight.bold)));
+              widgets.add(pw.SizedBox(height: 4));
+              widgets.add(
+                pw.Table.fromTextArray(
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  headerDecoration:
+                      const pw.BoxDecoration(color: PdfColors.grey200),
+                  cellAlignments: {
+                    0: pw.Alignment.centerLeft,
+                    1: pw.Alignment.centerRight,
+                  },
+                  headers: ['Producto', 'Gastado'],
+                  data: filas
+                      .map((e) => [e.key, euros(e.value)])
+                      .toList(),
+                ),
+              );
+            }
+          }
+
+          return widgets;
+        },
       ),
     );
 
     await Printing.layoutPdf(onLayout: (format) async => doc.save());
+  }
+
+  /// Etiqueta de grupo para una compra, igual que usa AnaliticaService.informe
+  /// (solo se usa aquí para el desglose por mes/semana del PDF).
+  String _etiquetaGrupo(Compra c, AgrupacionInforme a) {
+    switch (a) {
+      case AgrupacionInforme.mes:
+        return '${c.fecha.year}-${c.fecha.month.toString().padLeft(2, '0')}';
+      case AgrupacionInforme.semana:
+        final lunes = c.fecha.subtract(Duration(days: c.fecha.weekday - 1));
+        final d = DateTime(lunes.year, lunes.month, lunes.day);
+        return 'Semana del ${d.day}/${d.month}';
+      case AgrupacionInforme.evento:
+        return (c.evento == null || c.evento!.isEmpty)
+            ? '(sin evento)'
+            : c.evento!;
+      case AgrupacionInforme.proveedor:
+        return c.proveedorNombre;
+    }
   }
 }
 
@@ -347,7 +414,6 @@ class _ComparativaMes extends StatelessWidget {
               'Gasto',
               actual.gastado,
               anterior.gastado,
-              // En gasto, bajar es bueno (verde), subir es malo (rojo).
               subirEsBueno: false,
             ),
             const SizedBox(height: 4),
@@ -356,7 +422,6 @@ class _ComparativaMes extends StatelessWidget {
               'Ahorro',
               actual.ahorro,
               anterior.ahorro,
-              // En ahorro, subir es bueno.
               subirEsBueno: true,
             ),
           ],
@@ -411,12 +476,11 @@ class _ComparativaMes extends StatelessWidget {
 
 class _FilaGrupo extends StatelessWidget {
   final GrupoInforme grupo;
-  final GrupoInforme? anterior; // mes anterior, para la flecha (solo por mes)
+  final GrupoInforme? anterior;
   const _FilaGrupo({required this.grupo, this.anterior});
 
   @override
   Widget build(BuildContext context) {
-    // Variacion de gasto respecto al mes anterior.
     Widget? flecha;
     if (anterior != null && anterior!.gastado > 0.005) {
       final dif = grupo.gastado - anterior!.gastado;
