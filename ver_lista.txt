@@ -313,6 +313,7 @@ class ListaCompraScreen extends StatelessWidget {
                           onPressed: () {
                             final incluidas = comparativas
                                 .where((c) =>
+                                    c.tieneDatos &&
                                     c.producto.enLista &&
                                     c.producto.cantidadEfectiva > 0)
                                 .toList();
