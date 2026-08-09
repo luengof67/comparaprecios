@@ -587,6 +587,11 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
   }
 
   Future<void> _guardar() async {
+    if (_lineas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('La compra debe tener al menos una línea.')));
+      return;
+    }
     final nuevasLineas = <LineaCompra>[];
     for (final le in _lineas) {
       final cant = double.tryParse(le.cantidad.text.replaceAll(',', '.'));
@@ -604,7 +609,6 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
         precioUnitario: tot / cant,
       ));
     }
-
     setState(() => _guardando = true);
     try {
       await widget.db.actualizarCompraLineas(widget.compra.id, nuevasLineas);
@@ -629,6 +633,18 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
             .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
+  }
+
+  void _anadirLinea() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _LineaSheet(
+        db: widget.db,
+        proveedorId: widget.compra.proveedorId,
+        onAdd: (linea) => setState(() => _lineas.add(_LineaEdit(linea))),
+      ),
+    );
   }
 
   @override
@@ -670,11 +686,18 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
           const SizedBox(height: 8),
           const Text(
             'Corrige la cantidad y el precio total de cada línea. El €/unidad se '
-            'recalcula solo, y también se corrige en el histórico de precios.',
+            'recalcula solo, y también se corrige en el histórico de precios. '
+            'Puedes añadir líneas que faltaron o quitar las que sobren.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
           const Divider(height: 24),
           ..._lineas.map(_tarjeta),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _anadirLinea,
+            icon: const Icon(Icons.add),
+            label: const Text('Añadir línea'),
+          ),
         ],
       ),
     );
@@ -689,8 +712,19 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(le.origen.productoNombre,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(le.origen.productoNombre,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: 'Quitar línea',
+                  onPressed: () => setState(() => _lineas.remove(le)),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
