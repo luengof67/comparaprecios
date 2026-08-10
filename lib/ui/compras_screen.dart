@@ -343,7 +343,8 @@ class _NuevaCompraScreenState extends State<NuevaCompraScreen> {
               child: ListTile(
                 title: Text(l.productoNombre),
                 subtitle: Text(
-                    '${_num(l.cantidad)} ${l.unidad} × ${euros3(l.precioUnitario)}/${l.unidad}'),
+                    '${_num(l.cantidad)} ${l.unidad} × ${euros3(l.precioUnitario)}/${l.unidad} · toca para editar'),
+                onTap: () => _editarLinea(i),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -365,6 +366,69 @@ class _NuevaCompraScreenState extends State<NuevaCompraScreen> {
 
   String _num(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 
+  /// Edita la cantidad y el precio de una línea ya añadida (el producto no cambia).
+  void _editarLinea(int i) {
+    final l = _lineas[i];
+    final cantCtrl = TextEditingController(text: _num(l.cantidad));
+    final precioCtrl = TextEditingController(text: l.precioUnitario.toString());
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.productoNombre),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: cantCtrl,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                  labelText: 'Cantidad (${l.unidad})',
+                  border: const OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: precioCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                  labelText: 'Precio €/${l.unidad}',
+                  border: const OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              final cant =
+                  double.tryParse(cantCtrl.text.trim().replaceAll(',', '.'));
+              final precio =
+                  double.tryParse(precioCtrl.text.trim().replaceAll(',', '.'));
+              if (cant == null || cant <= 0 || precio == null || precio < 0) {
+                return;
+              }
+              setState(() {
+                _lineas[i] = LineaCompra(
+                  productoId: l.productoId,
+                  productoNombre: l.productoNombre,
+                  unidad: l.unidad,
+                  cantidad: cant,
+                  precioUnitario: precio,
+                );
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _agregarLinea() {
     if (_proveedorId == null) {
       _aviso('Elige primero el proveedor.');
@@ -382,7 +446,6 @@ class _NuevaCompraScreenState extends State<NuevaCompraScreen> {
   }
 }
 
-/// Hoja para añadir una linea: elegir producto, cantidad y precio pagado.
 class _LineaSheet extends StatefulWidget {
   final FirestoreService db;
   final String proveedorId;
