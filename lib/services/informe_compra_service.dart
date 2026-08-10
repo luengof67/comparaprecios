@@ -75,8 +75,7 @@ class InformeCompraService {
 
       if (c.tieneDatos) {
         // CON precio: al proveedor más barato.
-        final barata = c.ofertas.reduce(
-            (a, b) => a.precioUnitario <= b.precioUnitario ? a : b);
+        final barata = c.ofertaEfectiva!;
         final enFormato = c.producto.pedirEnFormato && barata.tieneFormato;
         final linea = LineaOptima(
           producto: c.producto.nombre,

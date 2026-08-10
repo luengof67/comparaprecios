@@ -89,7 +89,7 @@ class ListaCompraScreen extends StatelessWidget {
                   if (!c.tieneDatos) continue;
                   if (!c.producto.enLista) continue;
                   if (c.producto.cantidadEfectiva <= 0) continue;
-                  final provId = c.masBarato!.proveedor.id;
+                  final provId = c.ofertaEfectiva!.proveedor.id;
                   porProveedor.putIfAbsent(provId, () => []).add(c);
                 }
 
@@ -384,7 +384,7 @@ class _BloqueProveedor extends StatelessWidget {
     for (final c in items) {
       final cant = c.producto.cantidadEfectiva;
       if (c.producto.enLista && cant > 0) {
-        subtotal += c.masBarato!.precioUnitario * cant;
+        subtotal += c.ofertaEfectiva!.precioUnitario * cant;
       }
     }
 
@@ -428,7 +428,7 @@ class _BloqueProveedor extends StatelessWidget {
             ),
           ),
           ...items.map((c) {
-            final o = c.masBarato!;
+            final o = c.ofertaEfectiva!;
             final cant = c.producto.cantidadEfectiva;
             final unidad = c.producto.unidadBase.nombre;
             final activo = c.producto.enLista;

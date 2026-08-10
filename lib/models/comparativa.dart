@@ -47,6 +47,18 @@ class ComparativaProducto {
   bool get tieneDatos => ofertas.isNotEmpty;
 
   OfertaProveedor? get masBarato => ofertas.isEmpty ? null : ofertas.first;
+/// Oferta que se usará de verdad: la del proveedor asignado en la ficha
+  /// (si lo hay y tiene precio de este producto), o si no, la más barata.
+  /// Sirve para reasignar un producto a otro proveedor (p. ej. sin stock).
+  OfertaProveedor? get ofertaEfectiva {
+    final asignado = producto.proveedorAsignadoId;
+    if (asignado.isNotEmpty) {
+      for (final o in ofertas) {
+        if (o.proveedor.id == asignado) return o;
+      }
+    }
+    return masBarato;
+  }
   OfertaProveedor? get masCaro => ofertas.isEmpty ? null : ofertas.last;
 
   double get precioMin => masBarato?.precioUnitario ?? 0;
