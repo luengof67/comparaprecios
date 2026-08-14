@@ -8,6 +8,7 @@ import 'services/exportar_escandallo.dart';
 import 'services/firestore_service.dart';
 import 'ui/guia_screen.dart';
 import 'ui/importar_cocina_screen.dart';
+import 'ui/importar_traza_screen.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
 import 'ui/informes_screen.dart';
@@ -117,11 +118,27 @@ class _RaizScreenState extends State<RaizScreen> {
                   MaterialPageRoute(
                       builder: (_) => ImportarCocinaScreen(db: _db)),
                 );
+             } else if (v == 'importar_traza') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => ImportarTrazaScreen(db: _db)),
+                );
               } else if (v == 'salir') {
                 FirebaseAuth.instance.signOut();
               }
             },
             itemBuilder: (_) => [
+             const PopupMenuItem(
+                value: 'importar_traza',
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long, size: 20),
+                    SizedBox(width: 8),
+                    Text('Importar albaranes de TRAZA'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'importar',
                 child: Row(
