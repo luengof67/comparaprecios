@@ -46,6 +46,11 @@ class Compra {
   final List<LineaCompra> lineas;
   final String? evento; // opcional: "Banquete sabado", etc.
 
+  /// Solo para compras importadas desde TRAZA: la clave del albaran de origen,
+  /// "proveedor|albaran|fecha". Sirve para no importar dos veces el mismo
+  /// papel. Es nulo en todas las compras registradas a mano.
+  final String? origenClave;
+
   Compra({
     required this.id,
     required this.proveedorId,
@@ -53,6 +58,7 @@ class Compra {
     required this.fecha,
     required this.lineas,
     this.evento,
+    this.origenClave,
   });
 
   double get total => lineas.fold(0, (s, l) => s + l.total);
@@ -69,6 +75,7 @@ class Compra {
           .map((e) => LineaCompra.fromMap(Map<String, dynamic>.from(e)))
           .toList(),
       evento: d['evento'],
+      origenClave: d['origenClave'],
     );
   }
 
@@ -78,6 +85,7 @@ class Compra {
         'fecha': Timestamp.fromDate(fecha),
         'lineas': lineas.map((l) => l.toMap()).toList(),
         'evento': evento,
+        'origenClave': origenClave,
         'total': total, // guardado para consultas/informes rapidos
         'creado': FieldValue.serverTimestamp(),
       };
