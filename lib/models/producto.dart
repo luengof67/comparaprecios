@@ -24,22 +24,82 @@ extension UnidadBaseX on UnidadBase {
 }
 
 /// Un nombre alternativo con el que un proveedor concreto denomina el producto.
-/// Ej: proveedor "Makro" lo llama "TOMATE PERA CAJA 6KG 1ª".
+/// Ej: proveedor "Makro" lo llama "TOMATE PERA CAJA 6KG 1a".
+///
+/// Ademas del nombre, guarda COMO viene envasado en ese proveedor:
+///   - [formato]: el envase ("caja", "saco", "garrafa"...). Vacio = a granel.
+///   - [factor] : cuantas unidades base trae ese envase (6 kg, 12 ud, 5 L...).
+///
+/// Con el factor, el precio del albaran (que viene por caja) se convierte
+/// automaticamente a precio por unidad base:  unitario = precioFormato / factor.
+/// factor 0 = todavia no se sabe; hay que preguntarlo una vez.
 class AliasProducto {
   final String texto; // el nombre tal como aparece en el albarán
   final String? proveedorId; // de qué proveedor viene (null = general)
 
-  AliasProducto({required this.texto, this.proveedorId});
+  /// Nombre del envase con el que sirve este proveedor. Vacío = sin formato.
+  final String formato;
+
+  /// Unidades base que trae el envase. 0 = sin definir (retrocompatible).
+  final double factor;
+
+  AliasProducto({
+    required this.texto,
+    this.proveedorId,
+    this.formato = '',
+    this.factor = 0,
+  });
+
+  /// ¿Sabemos ya convertir el precio de este formato a precio por unidad base?
+  bool get tieneFactor => factor > 0;
+
+  /// Convierte el precio del envase a precio por unidad base.
+  /// Devuelve null si aún no hay factor (hay que preguntarlo).
+  double? unitarioDesdeFormato(double precioFormato) =>
+      factor > 0 ? precioFormato / factor : null;
+
+  /// Etiqueta para enseñar debajo del precio: "caja 6 kg", "5 L", "".
+  String descripcionFormato(UnidadBase base) {
+    if (factor <= 0) return formato;
+    final n = factor == factor.roundToDouble()
+        ? factor.toStringAsFixed(0)
+        : factor.toStringAsFixed(2);
+    final cuerpo = '$n ${base.nombre}';
+    return formato.isEmpty ? cuerpo : '$formato $cuerpo';
+  }
+
+  /// Dos alias son el mismo si coinciden texto (sin mayúsculas ni espacios)
+  /// y proveedor. Se usa para corregir un alias en vez de duplicarlo.
+  bool mismaClaveQue(AliasProducto o) =>
+      texto.toLowerCase().trim() == o.texto.toLowerCase().trim() &&
+      (proveedorId ?? '') == (o.proveedorId ?? '');
+
+  AliasProducto copyWith({
+    String? texto,
+    String? proveedorId,
+    String? formato,
+    double? factor,
+  }) =>
+      AliasProducto(
+        texto: texto ?? this.texto,
+        proveedorId: proveedorId ?? this.proveedorId,
+        formato: formato ?? this.formato,
+        factor: factor ?? this.factor,
+      );
 
   factory AliasProducto.fromMap(Map<String, dynamic> d) => AliasProducto(
         texto: (d['texto'] ?? '').toString(),
         proveedorId: d['proveedorId']?.toString(),
+        formato: (d['formato'] ?? '').toString(),
+        factor: (d['factor'] ?? 0).toDouble(),
       );
 
   Map<String, dynamic> toMap() => {
         'texto': texto,
         'textoLower': texto.toLowerCase().trim(),
         'proveedorId': proveedorId,
+        'formato': formato,
+        'factor': factor,
       };
 }
 
@@ -68,6 +128,7 @@ class Producto {
   /// Nombre del formato elegido esta semana ("caja", "docena", "estuche"...).
   /// Solo tiene sentido si pedirEnFormato es true. Vacío = sin formato.
   final String formatoSemana;
+
   /// Proveedor al que se le pide este producto cuando aún no tiene precio
   /// (solo se usa para colocarlo en la hoja de pedido). Vacío = sin asignar.
   final String proveedorAsignadoId;
@@ -100,6 +161,21 @@ class Producto {
     this.alias = const [],
     this.notas,
   });
+
+  /// Busca el alias que corresponde a un texto de albarán.
+  /// Prioriza el alias del proveedor concreto sobre el general, porque el
+  /// formato (y por tanto el factor) cambia de un proveedor a otro.
+  /// Devuelve null si ese texto no está aprendido todavía.
+  AliasProducto? aliasPara(String textoAlbaran, {String? proveedorId}) {
+    final buscado = textoAlbaran.toLowerCase().trim();
+    AliasProducto? general;
+    for (final a in alias) {
+      if (a.texto.toLowerCase().trim() != buscado) continue;
+      if (proveedorId != null && a.proveedorId == proveedorId) return a;
+      if (a.proveedorId == null || a.proveedorId!.isEmpty) general ??= a;
+    }
+    return general;
+  }
 
   factory Producto.fromDoc(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;

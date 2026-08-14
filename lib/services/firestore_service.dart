@@ -57,11 +57,36 @@ class FirestoreService {
 
   Future<void> borrarProducto(String id) => _productos.doc(id).delete();
 
-  /// Aprende un alias nuevo para un producto (lo añade a su lista).
-  Future<void> agregarAlias(String productoId, AliasProducto alias) =>
-      _productos.doc(productoId).update({
-        'alias': FieldValue.arrayUnion([alias.toMap()]),
-      });
+  /// Aprende un alias nuevo para un producto, o CORRIGE el que ya hubiera con
+  /// el mismo texto y proveedor.
+  ///
+  /// Antes esto usaba arrayUnion, que compara el mapa entero. Desde que el
+  /// alias lleva `formato` y `factor`, corregir un factor equivocado (la caja
+  /// pasa de 6 kg a 5 kg) no reemplazaba nada: metia un segundo alias con el
+  /// mismo texto y distinto factor, y el casado se quedaba con el que saliera
+  /// primero. Por eso ahora se lee la lista, se sustituye el que coincide y se
+  /// escribe entera, dentro de una transaccion para no pisar cambios de otro
+  /// dispositivo.
+  Future<void> agregarAlias(String productoId, AliasProducto alias) async {
+    final ref = _productos.doc(productoId);
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final data = snap.data() as Map<String, dynamic>?;
+      final raw = (data?['alias'] as List?) ?? const [];
+      final lista = raw
+          .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+
+      final i = lista.indexWhere((a) => a.mismaClaveQue(alias));
+      if (i >= 0) {
+        lista[i] = alias;
+      } else {
+        lista.add(alias);
+      }
+
+      tx.update(ref, {'alias': lista.map((a) => a.toMap()).toList()});
+    });
+  }
 
   /// Reemplaza toda la lista de alias de un producto (gestión manual).
   Future<void> setAlias(String productoId, List<AliasProducto> alias) =>
