@@ -1,0 +1,315 @@
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+/// Una línea del inventario: el producto y un detalle opcional
+/// (formato, unidad, proveedor... lo que quieras ver junto al nombre).
+class ItemInventario {
+  final String nombre;
+  final String? detalle;
+
+  const ItemInventario({required this.nombre, this.detalle});
+}
+
+/// Fila interna del maquetado: o es cabecera de familia, o es producto.
+class _Fila {
+  final String? cabecera;
+  final ItemInventario? item;
+
+  _Fila.cabecera(String texto)
+      : cabecera = texto,
+        item = null;
+
+  _Fila.item(ItemInventario i)
+      : cabecera = null,
+        item = i;
+
+  bool get esCabecera => cabecera != null;
+}
+
+class InventarioPdfService {
+  /// Filas que caben en cada columna. Si ves que sobra o falta hueco
+  /// al pie de la hoja, ajusta solo este número.
+  static const int filasPorColumna = 42;
+
+  static const double _altoFila = 14.0;
+  static const double _anchoCasilla = 32.0;
+  static const double _sepColumnas = 14.0;
+
+  /// Abre el diálogo de impresión del sistema (o "Guardar como PDF").
+  static Future<void> imprimir({
+    required Map<String, List<ItemInventario>> porFamilia,
+    String titulo = 'INVENTARIO DE ALMACÉN',
+  }) async {
+    final doc = _construir(porFamilia: porFamilia, titulo: titulo);
+    await Printing.layoutPdf(
+      name: 'inventario_${_sello(DateTime.now())}.pdf',
+      onLayout: (PdfPageFormat format) async => doc.save(),
+    );
+  }
+
+  /// Comparte el PDF (WhatsApp, correo, Drive...) sin pasar por impresora.
+  static Future<void> compartir({
+    required Map<String, List<ItemInventario>> porFamilia,
+    String titulo = 'INVENTARIO DE ALMACÉN',
+  }) async {
+    final doc = _construir(porFamilia: porFamilia, titulo: titulo);
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'inventario_${_sello(DateTime.now())}.pdf',
+    );
+  }
+
+  // ---------------------------------------------------------------- montaje
+
+  static pw.Document _construir({
+    required Map<String, List<ItemInventario>> porFamilia,
+    required String titulo,
+  }) {
+    final doc = pw.Document();
+    final columnas = _repartirEnColumnas(_aplanar(porFamilia));
+    final totalHojas = (columnas.length / 2).ceil().clamp(1, 9999);
+    final fecha = _fechaLarga(DateTime.now());
+
+    if (columnas.isEmpty) {
+      doc.addPage(
+        pw.Page(
+          build: (_) => pw.Center(child: pw.Text('Sin productos que listar')),
+        ),
+      );
+      return doc;
+    }
+
+    for (var i = 0; i < columnas.length; i += 2) {
+      final izquierda = columnas[i];
+      final derecha = (i + 1 < columnas.length) ? columnas[i + 1] : <_Fila>[];
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4.copyWith(
+            marginLeft: 20,
+            marginRight: 20,
+            marginTop: 18,
+            marginBottom: 18,
+          ),
+          build: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              _cabeceraHoja(
+                titulo: titulo,
+                fecha: fecha,
+                hoja: (i ~/ 2) + 1,
+                total: totalHojas,
+              ),
+              pw.SizedBox(height: 8),
+              pw.Expanded(
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Expanded(child: _columna(izquierda)),
+                    pw.SizedBox(width: _sepColumnas),
+                    pw.Expanded(child: _columna(derecha)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return doc;
+  }
+
+  /// Ordena familias y productos alfabéticamente y los convierte
+  /// en una lista plana de filas.
+  static List<_Fila> _aplanar(Map<String, List<ItemInventario>> porFamilia) {
+    final filas = <_Fila>[];
+    final familias = porFamilia.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    for (final familia in familias) {
+      final items = [...?porFamilia[familia]]
+        ..sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
+      if (items.isEmpty) continue;
+
+      filas.add(_Fila.cabecera(familia.toUpperCase()));
+      for (final item in items) {
+        filas.add(_Fila.item(item));
+      }
+    }
+    return filas;
+  }
+
+  /// Trocea las filas en columnas, evitando que una cabecera de familia
+  /// se quede sola al pie de una columna.
+  static List<List<_Fila>> _repartirEnColumnas(List<_Fila> filas) {
+    final columnas = <List<_Fila>>[];
+    var inicio = 0;
+
+    while (inicio < filas.length) {
+      var fin = inicio + filasPorColumna;
+      if (fin > filas.length) fin = filas.length;
+
+      if (fin < filas.length && filas[fin - 1].esCabecera) fin -= 1;
+      if (fin <= inicio) fin = inicio + 1;
+
+      columnas.add(filas.sublist(inicio, fin));
+      inicio = fin;
+    }
+    return columnas;
+  }
+
+  // ---------------------------------------------------------------- widgets
+
+  static pw.Widget _cabeceraHoja({
+    required String titulo,
+    required String fecha,
+    required int hoja,
+    required int total,
+  }) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text(
+              titulo,
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              'Hoja $hoja de $total',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 3),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'Fecha: $fecha',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+            pw.Text(
+              'Realizado por: ______________________',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 4),
+        pw.Divider(height: 1, thickness: 0.8, color: PdfColors.grey800),
+      ],
+    );
+  }
+
+  static pw.Widget _columna(List<_Fila> filas) {
+    if (filas.isEmpty) return pw.SizedBox();
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        _rotulos(),
+        ...filas.map((f) => f.esCabecera ? _cabeceraFamilia(f.cabecera!) : _filaProducto(f.item!)),
+      ],
+    );
+  }
+
+  /// Rótulos de las tres casillas, repetidos arriba de cada columna.
+  static pw.Widget _rotulos() {
+    pw.Widget rotulo(String texto) => pw.Container(
+          width: _anchoCasilla,
+          alignment: pw.Alignment.center,
+          child: pw.Text(
+            texto,
+            style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
+          ),
+        );
+
+    return pw.Container(
+      height: 12,
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(width: 0.8, color: PdfColors.grey800)),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              'PRODUCTO',
+              style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          rotulo('EXIST.'),
+          rotulo('PREV.'),
+          rotulo('COMPRA'),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _cabeceraFamilia(String texto) {
+    return pw.Container(
+      height: _altoFila + 2,
+      color: PdfColors.grey300,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 3),
+      alignment: pw.Alignment.centerLeft,
+      child: pw.Text(
+        texto,
+        maxLines: 1,
+        overflow: pw.TextOverflow.clip,
+        style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold),
+      ),
+    );
+  }
+
+  static pw.Widget _filaProducto(ItemInventario item) {
+    final tieneDetalle = item.detalle != null && item.detalle!.trim().isNotEmpty;
+
+    pw.Widget casilla() => pw.Container(
+          width: _anchoCasilla,
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(left: pw.BorderSide(width: 0.4, color: PdfColors.grey600)),
+          ),
+        );
+
+    return pw.Container(
+      height: _altoFila,
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(width: 0.4, color: PdfColors.grey500)),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Expanded(
+            child: pw.Container(
+              padding: const pw.EdgeInsets.only(left: 3),
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Text(
+                tieneDetalle ? '${item.nombre}  ·  ${item.detalle}' : item.nombre,
+                maxLines: 1,
+                overflow: pw.TextOverflow.clip,
+                style: const pw.TextStyle(fontSize: 7),
+              ),
+            ),
+          ),
+          casilla(),
+          casilla(),
+          casilla(),
+        ],
+      ),
+    );
+  }
+
+  // ----------------------------------------------------------------- fechas
+
+  static String _dos(int n) => n.toString().padLeft(2, '0');
+
+  static String _sello(DateTime d) =>
+      '${d.year}${_dos(d.month)}${_dos(d.day)}_${_dos(d.hour)}${_dos(d.minute)}';
+
+  static String _fechaLarga(DateTime d) =>
+      '${_dos(d.day)}/${_dos(d.month)}/${d.year}';
+}

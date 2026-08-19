@@ -4,6 +4,7 @@ import '../models/compra.dart';
 // Import directo: `unidadBase.nombre` es un extension getter de este archivo.
 import '../models/producto.dart';
 import '../models/proveedor.dart';
+import '../utils/formato_parser.dart';
 import 'casador_service.dart';
 import 'firestore_service.dart';
 
@@ -14,6 +15,25 @@ import 'firestore_service.dart';
 /// Hermano de ImportarCocinaService, no sustituto: aquel lee `{precios:[…]}`
 /// plano y solo crea precios. Este lee albaranes con líneas y crea compras.
 
+/// De dónde ha salido el factor de conversión de una línea.
+enum OrigenFactor {
+  /// El formato ya es la unidad base ("KG", "L", "UD"): factor 1, nada que hacer.
+  unidadBase,
+
+  /// Estaba aprendido en el alias de ese proveedor. No se pregunta.
+  alias,
+
+  /// Deducido del texto del albarán. Es una propuesta: hay que confirmarla.
+  propuesto,
+
+  /// El formato es de otra familia que el producto (formato "L" en un producto
+  /// que se compara por kg). Casi siempre significa que el casado está mal.
+  incompatible,
+
+  /// No se ha podido deducir. Hay que teclearlo una vez.
+  desconocido,
+}
+
 /// Una línea de albarán con su casado, pendiente de revisar.
 class LineaTraza {
   final String textoAlbaran; // el nombre tal como venía en el papel
@@ -21,6 +41,11 @@ class LineaTraza {
   final String formato; // "caja", "docena"… vacío = unidad base
   final double precio; // precio unitario leído (por formato o por unidad)
   final double importe; // total de la línea
+
+  /// El campo `formato` es en realidad la unidad base ("KG", "L", "UD").
+  /// En ese caso la cantidad ya viene en unidad base y no hay que convertir:
+  /// es el caso del género de peso variable (carne, pescado).
+  final bool formatoEsBase;
 
   // Casado, editable en la revisión:
   String? productoId; // null = producto nuevo, se creará con este nombre
@@ -31,8 +56,12 @@ class LineaTraza {
   bool importar;
 
   /// Cuántas unidades base tiene un formato ("caja de 6 kg" → 6).
-  /// 0 = sin definir. Solo se usa cuando hay formato.
+  /// 0 = sin definir. Solo se usa cuando hay formato de verdad.
   double pesoFormato;
+
+  /// De dónde salió `pesoFormato`. La pantalla lo usa para saber si enseñar
+  /// la casilla en rojo (hay que teclearlo) o en gris (ya viene propuesto).
+  OrigenFactor origenFactor;
 
   LineaTraza({
     required this.textoAlbaran,
@@ -40,6 +69,7 @@ class LineaTraza {
     required this.formato,
     required this.precio,
     required this.importe,
+    this.formatoEsBase = false,
     this.productoId,
     required this.productoNombre,
     required this.unidad,
@@ -47,14 +77,20 @@ class LineaTraza {
     this.aprenderAlias = false,
     this.importar = false,
     this.pesoFormato = 0,
+    this.origenFactor = OrigenFactor.desconocido,
   });
 
-  bool get tieneFormato => formato.trim().isNotEmpty;
+  /// Hay formato de verdad (un envase) cuando el campo viene relleno Y no es
+  /// la propia unidad base. "CAJA" sí; "KG" no.
+  bool get tieneFormato => formato.trim().isNotEmpty && !formatoEsBase;
 
   /// Una línea con formato no puede entrar hasta saber cuánto pesa, porque
   /// `precioUnitario` de LineaCompra es SIEMPRE por unidad base. Meter
   /// 18 €/caja donde el producto está en €/kg ensucia todas las comparativas.
   bool get necesitaPeso => tieneFormato && pesoFormato <= 0;
+
+  /// El factor es una propuesta sin confirmar: conviene que se vea distinto.
+  bool get factorPropuesto => origenFactor == OrigenFactor.propuesto;
 
   /// Cantidad expresada en la unidad base del producto.
   double get cantidadBase => tieneFormato ? cantidad * pesoFormato : cantidad;
@@ -69,9 +105,28 @@ class LineaTraza {
     return pesoFormato > 0 ? precio / pesoFormato : 0;
   }
 
+  /// Precio tal como venía en el papel, para enseñarlo en pequeño debajo del
+  /// unitario: "24,00 € · caja 6 kg". Así se reconoce contra el albarán.
+  String descripcionOrigen() {
+    if (!tieneFormato) return '';
+    final n = pesoFormato == pesoFormato.roundToDouble()
+        ? pesoFormato.toStringAsFixed(0)
+        : pesoFormato.toStringAsFixed(2);
+    if (pesoFormato <= 0) return formato;
+    return '$formato $n ${unidad.nombre}';
+  }
+
+  /// La aritmética del albarán no cuadra: cantidad x precio no da el importe.
+  /// No dice nada del formato (esa cuenta se cumple igual en cajas que en
+  /// kilos), pero sí delata un número mal leído por el OCR.
+  bool get aritmeticaRara =>
+      importe > 0 &&
+      cantidad > 0 &&
+      precio > 0 &&
+      !FormatoParser.cuadraLinea(cantidad, precio, importe);
+
   /// ¿Se puede registrar esta línea tal como está?
-  bool get lista =>
-      !necesitaPeso && cantidadBase > 0 && precioUnitario > 0;
+  bool get lista => !necesitaPeso && cantidadBase > 0 && precioUnitario > 0;
 }
 
 /// Un albarán completo del JSON, con sus líneas.
@@ -106,6 +161,9 @@ class AlbaranTraza {
       lineasListas.fold(0, (s, l) => s + l.cantidadBase * l.precioUnitario);
 
   int get pendientes => lineas.where((l) => !l.importar || !l.lista).length;
+
+  /// Líneas que traen un factor solo propuesto: conviene repasarlas.
+  int get porConfirmar => lineas.where((l) => l.factorPropuesto).length;
 }
 
 class ImportarTrazaService {
@@ -131,35 +189,73 @@ class ImportarTrazaService {
     return DateTime.tryParse(s) ?? DateTime.now();
   }
 
+  /// Si el campo `formato` del albarán es en realidad una unidad base
+  /// ("KG", "L", "UD"), devuelve cuál. Si es un envase ("CAJA"), null.
+  static UnidadBase? formatoComoUnidadBase(String formato) {
+    final f = _norm(formato);
+    const kg = ['kg', 'kgs', 'k', 'kilo', 'kilos', 'kilogramo', 'kilogramos'];
+    const l = ['l', 'lt', 'ltr', 'litro', 'litros'];
+    const u = [
+      'ud', 'uds', 'u', 'unidad', 'unidades', 'pza', 'pzas', 'pieza', 'piezas'
+    ];
+    if (kg.contains(f)) return UnidadBase.kg;
+    if (l.contains(f)) return UnidadBase.litro;
+    if (u.contains(f)) return UnidadBase.unidad;
+    return null;
+  }
+
   /// Deduce cuánto pesa un formato a partir del texto del albarán
   /// ("TOMATE RAMA CAJA 6KG" → 6 si el producto va en kg).
   /// Devuelve 0 cuando no lo ve claro: es una propuesta, no una certeza.
+  /// Se conserva el nombre porque lo usa la pantalla de revisión; por dentro
+  /// ya trabaja FormatoParser, que reconoce muchos más casos.
   static double pesoDeTexto(String texto, String formato, UnidadBase unidad) {
-    final t = '${texto.toLowerCase()} ${formato.toLowerCase()}';
+    final d = FormatoParser.detectar('$texto $formato', unidad);
+    return d?.factor ?? 0;
+  }
 
-    if (unidad == UnidadBase.unidad) {
-      if (RegExp(r'\bdocenas?\b').hasMatch(t)) return 12;
-      final ud = RegExp(r'(\d+)\s*(uds?|unidades?|piezas?)\b').firstMatch(t);
-      if (ud != null) return _num(ud.group(1));
-      return 0;
+  /// Decide el factor de una línea, por orden de fiabilidad:
+  ///   1. el formato ya es la unidad base  -> 1
+  ///   2. está aprendido en el alias        -> ese, sin preguntar
+  ///   3. se deduce del texto               -> propuesta a confirmar
+  ///   4. nada                              -> preguntar una vez
+  static void _resolverFactor(
+    LineaTraza linea,
+    Producto? producto,
+    String? proveedorId,
+  ) {
+    if (!linea.tieneFormato) {
+      linea.pesoFormato = 1;
+      linea.origenFactor = OrigenFactor.unidadBase;
+      return;
     }
 
-    final m = RegExp(r'(\d+(?:[.,]\d+)?)\s*(kgs?|kg|grs?|gr|g|lts?|lt|l|ml|cl)\b')
-        .firstMatch(t);
-    if (m == null) return 0;
-    final n = _num(m.group(1));
-    final u = m.group(2)!;
-
-    if (unidad == UnidadBase.kg) {
-      if (u.startsWith('kg')) return n;
-      if (u.startsWith('g')) return n / 1000;
-      return 0; // una medida en litros no dice el peso
+    // El formato es de otra familia que el producto: no se convierte nada.
+    final comoBase = formatoComoUnidadBase(linea.formato);
+    if (comoBase != null && comoBase != linea.unidad) {
+      linea.pesoFormato = 0;
+      linea.origenFactor = OrigenFactor.incompatible;
+      return;
     }
-    // litros
-    if (u == 'l' || u.startsWith('lt')) return n;
-    if (u == 'ml') return n / 1000;
-    if (u == 'cl') return n / 100;
-    return 0;
+
+    final alias =
+        producto?.aliasPara(linea.textoAlbaran, proveedorId: proveedorId);
+    if (alias != null && alias.tieneFactor) {
+      linea.pesoFormato = alias.factor;
+      linea.origenFactor = OrigenFactor.alias;
+      return;
+    }
+
+    final d = FormatoParser.detectar(
+        '${linea.textoAlbaran} ${linea.formato}', linea.unidad);
+    if (d != null && d.factor > 0) {
+      linea.pesoFormato = d.factor;
+      linea.origenFactor = OrigenFactor.propuesto;
+      return;
+    }
+
+    linea.pesoFormato = 0;
+    linea.origenFactor = OrigenFactor.desconocido;
   }
 
   /// Lee el JSON de TRAZA y prepara los albaranes con el casado hecho.
@@ -206,12 +302,18 @@ class ImportarTrazaService {
         final unidad = p?.unidadBase ?? UnidadBase.kg;
         final formato = (l['formato'] ?? '').toString().trim();
 
+        // Un formato que ES la unidad base del producto no es un envase:
+        // la cantidad ya viene en kilos o litros y no hay que convertir.
+        final comoBase = formatoComoUnidadBase(formato);
+        final esBase = comoBase != null && comoBase == unidad;
+
         final linea = LineaTraza(
           textoAlbaran: texto,
           cantidad: _num(l['cantidad']),
           formato: formato,
           precio: _num(l['precio']),
           importe: _num(l['importe']),
+          formatoEsBase: esBase,
           productoId: p?.id,
           productoNombre: p?.nombre ?? texto,
           unidad: unidad,
@@ -222,9 +324,7 @@ class ImportarTrazaService {
           importar: casado.tipo == TipoCasado.automatico,
           aprenderAlias: casado.tipo != TipoCasado.automatico,
         );
-        if (linea.tieneFormato) {
-          linea.pesoFormato = pesoDeTexto(texto, formato, unidad);
-        }
+        _resolverFactor(linea, p, prov?.id);
         lineas.add(linea);
       }
 
@@ -315,12 +415,10 @@ class ImportarTrazaService {
         lineasOk++;
 
         // El trabajo de casar a mano no se tira: se guarda como alias del
-        // proveedor para que el próximo albarán entre solo.
-        if (l.aprenderAlias) {
-          final p = prodPorId[prid];
-          if (p != null && await _aprenderAlias(db, p, l.textoAlbaran, pid)) {
-            alias++;
-          }
+        // proveedor para que el próximo albarán entre solo. Y con él va el
+        // factor, que es lo que evita volver a teclear el peso de la caja.
+        if (await _aprenderAlias(db, prodPorId[prid], prid, l, pid)) {
+          alias++;
         }
       }
 
@@ -351,27 +449,56 @@ class ImportarTrazaService {
     );
   }
 
-  /// Añade el texto del albarán a los alias del producto, si no estaba ya.
-  /// Usa agregarAlias (arrayUnion): escribe solo ese campo, así que no puede
-  /// pisar nada del producto ni lo que se haya añadido desde el otro PC.
+  /// Guarda el texto del albarán como alias del producto para ese proveedor,
+  /// junto con el formato y su factor.
+  ///
+  /// Se escribe en dos situaciones: cuando el alias es nuevo, y cuando ya
+  /// existía pero sin factor (o con otro distinto), que es como se corrige un
+  /// peso de caja mal puesto. `agregarAlias` sustituye en vez de duplicar.
   static Future<bool> _aprenderAlias(
     FirestoreService db,
-    Producto p,
-    String texto,
+    Producto? p,
+    String productoId,
+    LineaTraza l,
     String proveedorId,
   ) async {
-    final t = texto.trim();
+    final t = l.textoAlbaran.trim();
     if (t.isEmpty) return false;
 
-    // arrayUnion solo evita duplicados exactos; comparamos normalizado para no
-    // acumular el mismo nombre con otras mayúsculas o espacios.
-    final existe = p.alias.any(
-        (a) => _norm(a.texto) == _norm(t) && a.proveedorId == proveedorId);
-    if (existe) return false;
+    final formato = l.tieneFormato ? l.formato.trim() : '';
+    final factor = l.tieneFormato ? l.pesoFormato : 0.0;
+
+    // Producto recién creado en esta misma importación: no hay alias previo.
+    if (p == null) {
+      if (!l.aprenderAlias && formato.isEmpty) return false;
+      await db.agregarAlias(
+        productoId,
+        AliasProducto(
+          texto: t,
+          proveedorId: proveedorId,
+          formato: formato,
+          factor: factor,
+        ),
+      );
+      return true;
+    }
+
+    final actual = p.aliasPara(t, proveedorId: proveedorId);
+    final existe = actual != null && actual.proveedorId == proveedorId;
+    final mismoFactor = existe && (actual.factor - factor).abs() < 0.0001;
+
+    // Ni es nuevo ni cambia el factor: no hay nada que escribir.
+    if (existe && mismoFactor) return false;
+    if (!existe && !l.aprenderAlias && formato.isEmpty) return false;
 
     await db.agregarAlias(
-      p.id,
-      AliasProducto(texto: t, proveedorId: proveedorId),
+      productoId,
+      AliasProducto(
+        texto: t,
+        proveedorId: proveedorId,
+        formato: formato,
+        factor: factor,
+      ),
     );
     return true;
   }
