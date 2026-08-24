@@ -12,6 +12,7 @@ import '../services/analitica_service.dart';
 import '../services/informe_mensual_service.dart';
 import '../services/firestore_service.dart';
 import 'comparador_screen.dart';
+import 'comparativa_screen.dart';
 import 'formato.dart';
 
 class InformesScreen extends StatefulWidget {
@@ -42,6 +43,15 @@ class _InformesScreenState extends State<InformesScreen> {
             tooltip: 'Cierre de mes (PDF)',
             icon: const Icon(Icons.picture_as_pdf),
             onPressed: () => _informeMensual(context),
+          ),
+          IconButton(
+            tooltip: 'Comparativa por producto',
+            icon: const Icon(Icons.table_rows),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ComparativaScreen(db: widget.db)),
+            ),
           ),
           IconButton(
             tooltip: 'Comparar proveedores',
