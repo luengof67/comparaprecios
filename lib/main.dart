@@ -9,6 +9,7 @@ import 'services/firestore_service.dart';
 import 'ui/guia_screen.dart';
 import 'ui/importar_cocina_screen.dart';
 import 'ui/importar_traza_screen.dart';
+import 'ui/mantenimiento_screen.dart';
 import 'ui/compras_screen.dart';
 import 'ui/dashboard_screen.dart';
 import 'ui/informes_screen.dart';
@@ -130,11 +131,37 @@ class _RaizScreenState extends State<RaizScreen> {
                   context,
                   MaterialPageRoute(builder: (_) => InventarioScreen(db: _db)),
                 );
+              } else if (v == 'mantenimiento') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => MantenimientoScreen(db: _db)),
+                );
               } else if (v == 'salir') {
                 FirebaseAuth.instance.signOut();
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'importar_traza',
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long, size: 20),
+                    SizedBox(width: 8),
+                    Text('Importar albaranes de TRAZA'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'mantenimiento',
+                child: Row(
+                  children: [
+                    Icon(Icons.build_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('Mantenimiento'),
+                  ],
+                ),
+              ),
              const PopupMenuItem(
                 value: 'inventario',
                 child: Row(
