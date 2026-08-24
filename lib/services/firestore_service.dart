@@ -33,6 +33,75 @@ class FirestoreService {
 
   Future<void> borrarProveedor(String id) => _proveedores.doc(id).delete();
 
+  /// Crea (o restaura) un proveedor con un id CONCRETO, en vez de dejar que
+  /// Firestore invente uno. Sirve para recuperar un proveedor borrado sin
+  /// perder su historico: si vuelve con el mismo id, sus precios y compras
+  /// vuelven a colgar de el solos.
+  Future<void> crearProveedorConId(String id, Proveedor p) =>
+      _proveedores.doc(id).set(p.toMap(), SetOptions(merge: true));
+
+  /// Escribe [datos] en muchos documentos, partiendo en lotes.
+  /// Firestore no admite mas de 500 escrituras por lote; se usa 400 de margen.
+  Future<int> _escribirPorLotes(
+    List<QueryDocumentSnapshot> docs,
+    Map<String, dynamic>? datos,
+  ) async {
+    var hechos = 0;
+    for (var i = 0; i < docs.length; i += 400) {
+      final fin = (i + 400) < docs.length ? i + 400 : docs.length;
+      final batch = _db.batch();
+      for (final d in docs.sublist(i, fin)) {
+        if (datos == null) {
+          batch.delete(d.reference);
+        } else {
+          batch.update(d.reference, datos);
+        }
+      }
+      await batch.commit();
+      hechos += fin - i;
+    }
+    return hechos;
+  }
+
+  /// Pasa TODO el historico de un proveedor a otro: precios y compras.
+  ///
+  /// Es lo que hay que hacer cuando el mismo proveedor quedo partido en dos
+  /// fichas por un duplicado. Devuelve cuantos documentos se han movido.
+  ///
+  /// OJO: no se puede deshacer con un boton. Una vez reapuntados, los
+  /// documentos no guardan de donde venian.
+  Future<({int precios, int compras})> reasignarProveedor({
+    required String de,
+    required String a,
+    required String nombreDestino,
+  }) async {
+    final pre = await _precios.where('proveedorId', isEqualTo: de).get();
+    final nPre = await _escribirPorLotes(pre.docs, {'proveedorId': a});
+
+    // En las compras va tambien el nombre, que se guarda por duplicado para
+    // que el historico siga leyendose aunque el proveedor desaparezca.
+    final com = await _compras.where('proveedorId', isEqualTo: de).get();
+    final nCom = await _escribirPorLotes(
+        com.docs, {'proveedorId': a, 'proveedorNombre': nombreDestino});
+
+    return (precios: nPre, compras: nCom);
+  }
+
+  /// Borra los precios de un proveedor. Con [soloTarifa] en true respeta los
+  /// que salieron de una compra, que son el gasto real y cambiarian los
+  /// informes de esos meses.
+  Future<int> borrarPreciosDeProveedor(String proveedorId,
+      {bool soloTarifa = true}) async {
+    final s = await _precios.where('proveedorId', isEqualTo: proveedorId).get();
+    final docs = soloTarifa
+        ? s.docs.where((d) {
+            final m = d.data() as Map<String, dynamic>;
+            return m['fuente'] != 'compra';
+          }).toList()
+        : s.docs;
+    return _escribirPorLotes(docs, null);
+  }
+
   /// Crea un proveedor con solo el nombre y devuelve su id (para importaciones).
   Future<String> crearProveedorNombre(String nombre) async {
     final ref = await _proveedores.add(Proveedor(id: '', nombre: nombre).toMap());
