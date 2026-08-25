@@ -48,3 +48,5 @@ android/key.properties
 android/app/keystore.jks
 *.jks
 *.b64
+*.bak
+parche_*.js
