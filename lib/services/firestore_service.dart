@@ -31,6 +31,39 @@ class FirestoreService {
     }
   }
 
+  /// Aprende como aparece escrito un proveedor en los albaranes.
+  ///
+  /// El OCR lee el membrete distinto cada vez, asi que sin esto cada forma
+  /// crea una ficha nueva. Al elegir el proveedor una vez, ese texto queda
+  /// asociado y la proxima importacion lo reconoce solo.
+  ///
+  /// Se lee y se escribe la lista entera en vez de usar arrayUnion, para
+  /// poder comparar normalizado y no acumular el mismo nombre con otras
+  /// mayusculas o espacios. Va en transaccion por los dos PCs.
+  Future<bool> agregarAliasProveedor(String proveedorId, String texto) async {
+    final t = texto.trim();
+    if (t.isEmpty) return false;
+
+    final ref = _proveedores.doc(proveedorId);
+    final snap = await ref.get();
+    final d = snap.data() as Map<String, dynamic>?;
+    if (d == null) return false;
+
+    final nombre = (d['nombre'] ?? '').toString();
+    final lista = ((d['alias'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
+
+    final buscado = Proveedor.norm(t);
+    // El nombre propio no hace falta guardarlo como alias.
+    if (Proveedor.norm(nombre) == buscado) return false;
+    if (lista.any((a) => Proveedor.norm(a) == buscado)) return false;
+
+    lista.add(t);
+    await ref.update({'alias': lista});
+    return true;
+  }
+
   Future<void> borrarProveedor(String id) => _proveedores.doc(id).delete();
 
   /// Crea (o restaura) un proveedor con un id CONCRETO, en vez de dejar que
@@ -168,23 +201,21 @@ class FirestoreService {
   /// dispositivo.
   Future<void> agregarAlias(String productoId, AliasProducto alias) async {
     final ref = _productos.doc(productoId);
-    await _db.runTransaction((tx) async {
-      final snap = await tx.get(ref);
-      final data = snap.data() as Map<String, dynamic>?;
-      final raw = (data?['alias'] as List?) ?? const [];
-      final lista = raw
-          .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
-          .toList();
+    final snap = await ref.get();
+    final data = snap.data() as Map<String, dynamic>?;
+    final raw = (data?['alias'] as List?) ?? const [];
+    final lista = raw
+        .map((e) => AliasProducto.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
 
-      final i = lista.indexWhere((a) => a.mismaClaveQue(alias));
-      if (i >= 0) {
-        lista[i] = alias;
-      } else {
-        lista.add(alias);
-      }
+    final i = lista.indexWhere((a) => a.mismaClaveQue(alias));
+    if (i >= 0) {
+      lista[i] = alias;
+    } else {
+      lista.add(alias);
+    }
 
-      tx.update(ref, {'alias': lista.map((a) => a.toMap()).toList()});
-    });
+    await ref.update({'alias': lista.map((a) => a.toMap()).toList()});
   }
 
   /// Reemplaza toda la lista de alias de un producto (gestión manual).

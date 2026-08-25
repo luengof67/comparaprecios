@@ -509,6 +509,7 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
 
   Future<Producto?> _elegirProducto() async {
     final buscarCtrl = TextEditingController();
+    var yaElegido = false;
     final elegido = await showDialog<Producto>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -543,7 +544,11 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
                         dense: true,
                         title: Text(lista[i].nombre),
                         subtitle: Text(lista[i].unidadBase.etiqueta),
-                        onTap: () => Navigator.pop(ctx, lista[i]),
+                        onTap: () {
+                          if (yaElegido) return;
+                          yaElegido = true;
+                          Navigator.pop(ctx, lista[i]);
+                        },
                       ),
                     ),
                   ),
@@ -590,6 +595,10 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
   /// compartir apellido, y meter una dentro de otra no tiene arreglo.
   Future<void> _elegirProveedor(AlbaranTraza a) async {
     final buscarCtrl = TextEditingController();
+    // Cerrojo contra el doble clic: el segundo toque llegaba cuando el
+    // dialogo ya se estaba cerrando y hacia un pop de mas, que se llevaba
+    // la pantalla de debajo.
+    var yaElegido = false;
 
     final elegido = await showDialog<Proveedor>(
       context: context,
@@ -644,7 +653,11 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
                                   radius: 8,
                                   backgroundColor: Color(p.color)),
                               title: Text(p.nombre),
-                              onTap: () => Navigator.pop(ctx, p),
+                              onTap: () {
+                                if (yaElegido) return;
+                                yaElegido = true;
+                                Navigator.pop(ctx, p);
+                              },
                             ),
                           const Divider(),
                         ],
@@ -660,7 +673,11 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
                             leading: CircleAvatar(
                                 radius: 8, backgroundColor: Color(p.color)),
                             title: Text(p.nombre),
-                            onTap: () => Navigator.pop(ctx, p),
+                            onTap: () {
+                              if (yaElegido) return;
+                              yaElegido = true;
+                              Navigator.pop(ctx, p);
+                            },
                           ),
                       ],
                     ),
@@ -681,13 +698,60 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
     buscarCtrl.dispose();
 
     if (elegido == null) return;
+
+    // El texto tal como venia en el papel, ANTES de sustituirlo. Es lo que se
+    // guarda como alias, y lo que sirve para encontrar los demas albaranes
+    // del lote que traen ese mismo nombre.
+    final textoAlbaran = a.proveedorNombre;
+
+    // Todos los del lote con ese nombre, no solo este: el OCR repite la misma
+    // forma varias veces dentro de la misma exportacion.
+    final mismos = _albaranes
+        .where((x) => x.proveedorId == null && x.proveedorNombre == textoAlbaran)
+        .toList();
+
     setState(() {
-      a.proveedorId = elegido.id;
-      // La compra se guarda con el nombre del proveedor elegido, no con el
-      // que venia escrito en el papel.
-      a.proveedorNombre = elegido.nombre;
-      a.sugerencias = const [];
+      for (final x in mismos) {
+        x.proveedorId = elegido.id;
+        // La compra se guarda con el nombre del proveedor elegido, no con el
+        // que venia escrito en el papel.
+        x.proveedorNombre = elegido.nombre;
+        x.sugerencias = const [];
+      }
     });
+
+    // Y se aprende, para que la proxima vez no haya que elegir nada.
+    var aprendido = false;
+    try {
+      aprendido = await widget.db.agregarAliasProveedor(
+          elegido.id, textoAlbaran);
+      if (aprendido) {
+        // La lista en memoria tambien, o el resto del lote no lo veria.
+        final j = _proveedores.indexWhere((p) => p.id == elegido.id);
+        if (j >= 0) {
+          _proveedores[j] = Proveedor(
+            id: elegido.id,
+            nombre: elegido.nombre,
+            contacto: elegido.contacto,
+            notas: elegido.notas,
+            color: elegido.color,
+            alias: [...elegido.alias, textoAlbaran],
+          );
+        }
+      }
+    } catch (_) {
+      // Si no se puede guardar el alias no pasa nada: la eleccion de este
+      // lote ya esta hecha, solo se pierde el aprendizaje.
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(mismos.length > 1
+          ? '${mismos.length} albaranes asignados a "${elegido.nombre}"'
+          : aprendido
+              ? 'Aprendido: "$textoAlbaran" es ${elegido.nombre}'
+              : 'Asignado a "${elegido.nombre}"'),
+    ));
   }
 
   Widget _mini(String t, Color c) => Container(

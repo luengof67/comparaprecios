@@ -278,6 +278,18 @@ class ImportarTrazaService {
     final crudos = (data['albaranes'] as List?) ?? const [];
 
     final provPorNombre = {for (final p in proveedores) _norm(p.nombre): p};
+
+    /// Busca el proveedor por nombre exacto y, si no, por los alias que se
+    /// hayan aprendido en importaciones anteriores. El OCR lee el membrete
+    /// distinto cada vez, asi que el nombre exacto casi nunca casa.
+    Proveedor? buscarProveedor(String texto) {
+      final directo = provPorNombre[_norm(texto)];
+      if (directo != null) return directo;
+      for (final p in proveedores) {
+        if (p.casaCon(texto)) return p;
+      }
+      return null;
+    }
     final yaImportados = comprasExistentes
         .map((c) => c.origenClave)
         .whereType<String>()
@@ -296,7 +308,7 @@ class ImportarTrazaService {
           ? a['clave'].toString()
           : '$provNombre|$albaran|${(a['fecha'] ?? '').toString()}';
 
-      final prov = provPorNombre[_norm(provNombre)];
+      final prov = buscarProveedor(provNombre);
 
       // Sin coincidencia exacta: se buscan parecidos para proponerlos.
       final sugerencias = <Proveedor>[];
