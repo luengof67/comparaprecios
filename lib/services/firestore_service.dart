@@ -378,6 +378,59 @@ class FirestoreService {
 
   Future<void> borrarCompra(String id) => _compras.doc(id).delete();
 
+  /// Quita una linea de una compra, y con ella el precio que dejo en el
+  /// historico.
+  ///
+  /// Devuelve true si ha habido que borrar la compra entera por quedarse sin
+  /// lineas: un albaran de cero euros en los informes no ayuda a nadie.
+  ///
+  /// El precio se busca por producto, proveedor, dia y origen "compra", que
+  /// es como lo dejo registrarCompra. Si ese dia hubo dos compras del mismo
+  /// producto al mismo proveedor, se borra uno de los dos: es lo que hay,
+  /// porque el precio no guarda de que linea salio.
+  Future<bool> borrarLineaDeCompra({
+    required Compra compra,
+    required int indice,
+  }) async {
+    if (indice < 0 || indice >= compra.lineas.length) {
+      throw ArgumentError('La linea no existe.');
+    }
+    final linea = compra.lineas[indice];
+
+    // 1) El precio que genero, si lo encontramos.
+    final s = await _precios
+        .where('productoId', isEqualTo: linea.productoId)
+        .get();
+    for (final doc in s.docs) {
+      final d = doc.data() as Map<String, dynamic>;
+      if (d['proveedorId'] != compra.proveedorId) continue;
+      if (d['fuente'] != 'compra') continue;
+      final t = (d['fecha'] as Timestamp?)?.toDate();
+      if (t == null ||
+          t.year != compra.fecha.year ||
+          t.month != compra.fecha.month ||
+          t.day != compra.fecha.day) {
+        continue;
+      }
+      await doc.reference.delete();
+      break;
+    }
+
+    // 2) La linea.
+    final quedan = [...compra.lineas]..removeAt(indice);
+    if (quedan.isEmpty) {
+      await _compras.doc(compra.id).delete();
+      return true;
+    }
+
+    final total = quedan.fold<double>(0, (s, l) => s + l.total);
+    await _compras.doc(compra.id).update({
+      'lineas': quedan.map((l) => l.toMap()).toList(),
+      'total': total,
+    });
+    return false;
+  }
+
   /// Actualiza las líneas de una compra existente (recalcula el total).
   Future<void> actualizarCompraLineas(
       String compraId, List<LineaCompra> lineas) {

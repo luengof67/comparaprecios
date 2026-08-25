@@ -7,6 +7,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
+import 'albaranes_producto.dart';
 import 'formato.dart';
 
 class ProductoDetalleScreen extends StatelessWidget {
@@ -81,6 +82,7 @@ class ProductoDetalleScreen extends StatelessWidget {
                   _Estacionalidad(
                       precios: precios,
                       unidad: producto.unidadBase.nombre),
+                  AlbaranesDelProducto(db: db, producto: producto),
                   const SizedBox(height: 24),
                   Text('Histórico', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
