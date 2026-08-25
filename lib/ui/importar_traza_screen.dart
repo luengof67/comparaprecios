@@ -292,7 +292,14 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
                 else
                   _mini('listo', Colors.green),
                 if (a.proveedorId == null && a.proveedorNombre.isNotEmpty)
-                  _mini('proveedor nuevo', Colors.blue),
+                  InkWell(
+                    onTap: () => _elegirProveedor(a),
+                    child: _mini(
+                        a.sugerencias.isEmpty
+                            ? 'proveedor nuevo · tocar para elegir'
+                            : 'se parece a ${a.sugerencias.first.nombre} · tocar',
+                        a.sugerencias.isEmpty ? Colors.blue : Colors.orange),
+                  ),
                 if (descuadre)
                   _mini('el papel sumaba ${papel.toStringAsFixed(2)} €',
                       Colors.orange),
@@ -569,6 +576,118 @@ class _ImportarTrazaScreenState extends State<ImportarTrazaScreen> {
             .toList(),
       ),
     );
+  }
+
+  /// Deja elegir a que proveedor pertenece un albaran cuyo nombre no coincide
+  /// exactamente con ninguna ficha.
+  ///
+  /// Aqui esta el origen de los proveedores repetidos: el albaran trae el
+  /// nombre fiscal ("CARNICAS SERRANO SANCHEZ, S.L.") y en la app esta el
+  /// corto ("carnicas serrano sanchez"), asi que no casaban y se creaba una
+  /// ficha nueva en cada importacion.
+  ///
+  /// Los parecidos se PROPONEN, nunca se aplican solos: dos empresas pueden
+  /// compartir apellido, y meter una dentro de otra no tiene arreglo.
+  Future<void> _elegirProveedor(AlbaranTraza a) async {
+    final buscarCtrl = TextEditingController();
+
+    final elegido = await showDialog<Proveedor>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final q = buscarCtrl.text.toLowerCase().trim();
+          final resto = _proveedores
+              .where((p) => !a.sugerencias.any((s) => s.id == p.id))
+              .where((p) => q.isEmpty || p.nombre.toLowerCase().contains(q))
+              .toList();
+          final sugeridos = q.isEmpty
+              ? a.sugerencias
+              : a.sugerencias
+                  .where((p) => p.nombre.toLowerCase().contains(q))
+                  .toList();
+
+          return AlertDialog(
+            title: const Text('Proveedor del albaran'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 440,
+              child: Column(
+                children: [
+                  Text('En el albaran pone: "${a.proveedorNombre}"',
+                      style: const TextStyle(fontSize: 12)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: buscarCtrl,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Buscar proveedor',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setDlg(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        if (sugeridos.isNotEmpty) ...[
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 4),
+                            child: Text('Se parecen a este nombre',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey)),
+                          ),
+                          for (final p in sugeridos)
+                            ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                  radius: 8,
+                                  backgroundColor: Color(p.color)),
+                              title: Text(p.nombre),
+                              onTap: () => Navigator.pop(ctx, p),
+                            ),
+                          const Divider(),
+                        ],
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: Text('Todos los proveedores',
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
+                        ),
+                        for (final p in resto)
+                          ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                                radius: 8, backgroundColor: Color(p.color)),
+                            title: Text(p.nombre),
+                            onTap: () => Navigator.pop(ctx, p),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Crear uno nuevo'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    buscarCtrl.dispose();
+
+    if (elegido == null) return;
+    setState(() {
+      a.proveedorId = elegido.id;
+      // La compra se guarda con el nombre del proveedor elegido, no con el
+      // que venia escrito en el papel.
+      a.proveedorNombre = elegido.nombre;
+      a.sugerencias = const [];
+    });
   }
 
   Widget _mini(String t, Color c) => Container(

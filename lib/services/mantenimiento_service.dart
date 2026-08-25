@@ -96,6 +96,8 @@ class MantenimientoService {
     'sl', 'sa', 'slu', 'scp', 'cb', 'sll', 'srl',
     'e', 'hijos', 'hijo', 'hnos', 'hermanos', 'y', 'de', 'del',
     'la', 'el', 'los', 'las',
+    'soc', 'sdad', 'sociedad', 'limitada', 'anonima', 'unipersonal',
+    'cif', 'nif',
   };
 
   /// Palabras de sector o de zona. Distinguen poco: "Frutas Sur" y
@@ -112,8 +114,15 @@ class MantenimientoService {
 
   static double _peso(String p) => _flojas.contains(p) ? 0.4 : 1.0;
 
-  static Set<String> _palabras(String s) =>
-      _norm(s).split(' ').where((p) => p.isNotEmpty && !_ruido.contains(p)).toSet();
+  /// Parte el nombre en palabras con contenido.
+  ///
+  /// Se tiran las de una sola letra: vienen de los puntos de las siglas
+  /// ("serrano s.l" -> "serrano s l") y emparejaban con cualquier otra
+  /// sociedad limitada, que no dice absolutamente nada.
+  static Set<String> _palabras(String s) => _norm(s)
+      .split(' ')
+      .where((p) => p.length > 1 && !_ruido.contains(p))
+      .toSet();
 
   /// Cuanto se parecen dos nombres, de 0 a 1. Compara las palabras que llevan
   /// informacion, ignorando formas juridicas y muletillas, y dando menos peso

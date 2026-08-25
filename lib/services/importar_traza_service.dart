@@ -6,6 +6,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../utils/formato_parser.dart';
 import 'casador_service.dart';
+import 'mantenimiento_service.dart';
 import 'firestore_service.dart';
 
 /// Importa el JSON que exporta TRAZA desde Informes → "Exportar para
@@ -132,11 +133,17 @@ class LineaTraza {
 /// Un albarán completo del JSON, con sus líneas.
 class AlbaranTraza {
   final String clave; // "proveedor|albaran|fecha", estable entre escaneos
-  final String proveedorNombre;
+  /// No es final: si se elige un proveedor existente, pasa a ser el suyo.
+  String proveedorNombre;
   final String albaran;
   final DateTime fecha;
   final double? totalPapel; // el total que decía el albarán, para contrastar
   final List<LineaTraza> lineas;
+
+  /// Proveedores que se parecen a este nombre, cuando no hubo coincidencia
+  /// exacta. Son una propuesta a revisar, NUNCA se aplican solas: dos
+  /// empresas pueden compartir apellido y mezclarlas no tiene arreglo.
+  List<Proveedor> sugerencias;
 
   String? proveedorId; // null = proveedor nuevo, se creará por nombre
   bool duplicado; // ya hay una compra con esta misma clave
@@ -150,6 +157,7 @@ class AlbaranTraza {
     required this.totalPapel,
     required this.lineas,
     this.proveedorId,
+    this.sugerencias = const [],
     this.duplicado = false,
     this.importar = true,
   });
@@ -289,6 +297,19 @@ class ImportarTrazaService {
           : '$provNombre|$albaran|${(a['fecha'] ?? '').toString()}';
 
       final prov = provPorNombre[_norm(provNombre)];
+
+      // Sin coincidencia exacta: se buscan parecidos para proponerlos.
+      final sugerencias = <Proveedor>[];
+      if (prov == null && provNombre.isNotEmpty) {
+        for (final p in proveedores) {
+          if (MantenimientoService.parecido(provNombre, p.nombre) >= 0.5) {
+            sugerencias.add(p);
+          }
+        }
+        sugerencias.sort((x, y) => MantenimientoService
+            .parecido(provNombre, y.nombre)
+            .compareTo(MantenimientoService.parecido(provNombre, x.nombre)));
+      }
       final dup = yaImportados.contains(clave);
 
       final lineas = <LineaTraza>[];
@@ -336,6 +357,7 @@ class ImportarTrazaService {
         totalPapel: a['total'] == null ? null : _num(a['total']),
         lineas: lineas,
         proveedorId: prov?.id,
+        sugerencias: sugerencias,
         duplicado: dup,
         importar: !dup,
       ));
