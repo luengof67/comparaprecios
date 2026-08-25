@@ -5,7 +5,6 @@ import 'package:printing/printing.dart';
 import '../models/comparativa.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
-import 'fuentes_pdf.dart';
 
 /// Una línea de la compra óptima: un producto asignado a su proveedor más barato.
 class LineaOptima {
@@ -54,6 +53,8 @@ class InformeCompraService {
   /// Recibe las comparativas ya filtradas (en lista y con cantidad).
   static Future<void> generarPdf(List<ComparativaProducto> comparativas) async {
     // Fuentes con soporte del símbolo del euro (€).
+    final fuenteNormal = await PdfGoogleFonts.robotoRegular();
+    final fuenteNegrita = await PdfGoogleFonts.robotoBold();
 
     // Nombres de proveedores (para los asignados a mano sin precio).
     final nombreProv = <String, String>{};
@@ -120,7 +121,12 @@ class InformeCompraService {
 
     final ahorro = totalCaro - totalOptimo;
 
-    final doc = await FuentesPdf.documento();
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: fuenteNormal,
+        bold: fuenteNegrita,
+      ),
+    );
 
     doc.addPage(
       pw.MultiPage(

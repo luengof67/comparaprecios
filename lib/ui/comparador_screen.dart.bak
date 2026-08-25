@@ -9,7 +9,6 @@ import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
 import 'formato.dart';
-import '../services/fuentes_pdf.dart';
 
 /// Compara varios proveedores entre si: precio unitario producto a producto
 /// (solo los productos que TODOS los proveedores elegidos tienen) y el total
@@ -218,8 +217,12 @@ class _ComparadorScreenState extends State<ComparadorScreen> {
       if (peorId == null || t > totales[peorId]!) peorId = p.id;
     }
 
+    final fuente = await PdfGoogleFonts.robotoRegular();
+    final fuenteBold = await PdfGoogleFonts.robotoBold();
 
-    final doc = await FuentesPdf.documento();
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(base: fuente, bold: fuenteBold),
+    );
 
     // Cabeceras: Producto + un proveedor por columna.
     final headers = <String>['Producto', ...elegidos.map((p) => p.nombre)];

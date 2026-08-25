@@ -5,7 +5,6 @@ import 'package:printing/printing.dart';
 import '../models/comparativa.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
-import 'fuentes_pdf.dart';
 
 /// Genera la HOJA DE PEDIDO imprimible: solo los productos con cantidad puesta
 /// (el pedido real), agrupados por el proveedor más barato de cada uno, con la
@@ -13,6 +12,8 @@ import 'fuentes_pdf.dart';
 /// Es una copia en papel del pedido que ya montaste en la app.
 class HojaPedidoService {
   static Future<void> generar(List<ComparativaProducto> comparativas) async {
+    final fuente = await PdfGoogleFonts.robotoRegular();
+    final fuenteBold = await PdfGoogleFonts.robotoBold();
 
     // Productos en lista Y con cantidad puesta (tengan o no precio).
     final pedido = comparativas.where((c) {
@@ -58,7 +59,9 @@ class HojaPedidoService {
           .compareTo(b.producto.nombre.toLowerCase()));
     }
 
-    final doc = await FuentesPdf.documento();
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(base: fuente, bold: fuenteBold),
+    );
 
     doc.addPage(
       pw.MultiPage(

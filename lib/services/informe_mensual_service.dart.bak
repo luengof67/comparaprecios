@@ -6,7 +6,6 @@ import 'package:printing/printing.dart';
 import '../models/compra.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
-import 'fuentes_pdf.dart';
 
 /// Informe de cierre de mes: cuánto se ha gastado, con quién, en qué,
 /// y qué precios se han movido. Pensado para enseñar a gerencia o para
@@ -89,7 +88,11 @@ class InformeMensualService {
     final nombreMes =
         DateFormat('MMMM yyyy', 'es_ES').format(mes).toUpperCase();
 
-    final doc = await FuentesPdf.documento();
+    final fuenteNormal = await PdfGoogleFonts.robotoRegular();
+    final fuenteNegrita = await PdfGoogleFonts.robotoBold();
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(base: fuenteNormal, bold: fuenteNegrita),
+    );
 
     String pctDe(double v) =>
         total > 0 ? '${(v / total * 100).toStringAsFixed(1)}%' : '—';

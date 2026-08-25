@@ -9,7 +9,6 @@ import '../models/proveedor.dart';
 import '../services/comparativa_service.dart';
 import '../services/firestore_service.dart';
 import 'formato.dart';
-import '../services/fuentes_pdf.dart';
 
 /// Listado de TODOS los productos con el precio de cada proveedor, el mas
 /// barato resaltado y el ahorro que supone. Misma tabla en pantalla y en PDF:
@@ -317,7 +316,7 @@ class _ComparativaScreenState extends State<ComparativaScreen> {
       return;
     }
 
-    final doc = await FuentesPdf.documento();
+    final doc = pw.Document();
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,

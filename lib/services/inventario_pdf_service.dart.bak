@@ -42,7 +42,7 @@ class InventarioPdfService {
     required Map<String, List<ItemInventario>> porFamilia,
     String titulo = 'INVENTARIO DE ALMACÉN',
   }) async {
-    final doc = await _construir(porFamilia: porFamilia, titulo: titulo);
+    final doc = _construir(porFamilia: porFamilia, titulo: titulo);
     await Printing.layoutPdf(
       name: 'inventario_${_sello(DateTime.now())}.pdf',
       onLayout: (PdfPageFormat format) async => doc.save(),
@@ -54,7 +54,7 @@ class InventarioPdfService {
     required Map<String, List<ItemInventario>> porFamilia,
     String titulo = 'INVENTARIO DE ALMACÉN',
   }) async {
-    final doc = await _construir(porFamilia: porFamilia, titulo: titulo);
+    final doc = _construir(porFamilia: porFamilia, titulo: titulo);
     await Printing.sharePdf(
       bytes: await doc.save(),
       filename: 'inventario_${_sello(DateTime.now())}.pdf',
@@ -63,10 +63,10 @@ class InventarioPdfService {
 
   // ---------------------------------------------------------------- montaje
 
-  static Future<pw.Document> _construir({
+  static pw.Document _construir({
     required Map<String, List<ItemInventario>> porFamilia,
     required String titulo,
-  }) async {
+  }) {
     final doc = await FuentesPdf.documento();
     final columnas = _repartirEnColumnas(_aplanar(porFamilia));
     final totalHojas = (columnas.length / 2).ceil().clamp(1, 9999);
