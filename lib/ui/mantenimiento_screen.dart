@@ -8,6 +8,7 @@ import '../services/firestore_service.dart';
 import '../services/respaldo_service.dart';
 import 'huerfanos_screen.dart';
 import 'duplicados_screen.dart';
+import 'factores_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -231,6 +232,42 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => DuplicadosScreen(db: widget.db)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.straighten),
+                      const SizedBox(width: 8),
+                      Text('Envases sin equivalencia',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Precios de una caja o garrafa entera anotados como si '
+                    'fueran una unidad. Compiten contra el formato pequeño '
+                    'de otro proveedor y falsean la comparativa.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Revisar envases'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => FactoresScreen(db: widget.db)),
                     ),
                   ),
                 ],

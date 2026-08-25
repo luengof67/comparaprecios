@@ -262,6 +262,35 @@ class FirestoreService {
     return s.docs.map(Precio.fromDoc).toList();
   }
 
+  /// Pone el factor de conversion a un grupo de precios de envase.
+  ///
+  /// Estos precios se guardaron con cantidad 1, como si una garrafa entera
+  /// fuese una unidad. Al decir cuantas unidades base trae de verdad, la
+  /// cantidad pasa a ser ese numero y el precio por unidad se recalcula.
+  ///
+  /// El precio del envase (precioPaquete) no se toca: ese dato salio del
+  /// albaran y es correcto. Lo que estaba mal era la equivalencia.
+  Future<int> corregirFactorPrecios(
+      List<Precio> precios, double factor) async {
+    if (factor <= 0) {
+      throw ArgumentError('El factor tiene que ser mayor que cero.');
+    }
+    var hechos = 0;
+    for (var i = 0; i < precios.length; i += 400) {
+      final fin = (i + 400) < precios.length ? i + 400 : precios.length;
+      final batch = _db.batch();
+      for (final p in precios.sublist(i, fin)) {
+        batch.update(_precios.doc(p.id), {
+          'cantidad': factor,
+          'precioUnitario': p.precioPaquete / factor,
+        });
+      }
+      await batch.commit();
+      hechos += fin - i;
+    }
+    return hechos;
+  }
+
   Future<void> borrarPrecio(String id) => _precios.doc(id).delete();
 
   /// Edita un registro de precio existente (precio, cantidad y fecha).
