@@ -87,36 +87,6 @@ class FirestoreService {
     return (precios: nPre, compras: nCom);
   }
 
-  /// Fusiona dos proveedores que EXISTEN los dos: mueve todo el historico
-  /// de [de] a [a] y despues borra la ficha de [de].
-  ///
-  /// Es lo que hace falta cuando el mismo proveedor real quedo con dos fichas
-  /// (mismo nombre escrito de dos formas). A diferencia de reasignar un id
-  /// huerfano, aqui hay una ficha de sobra que hay que quitar de en medio.
-  ///
-  /// El borrado va al final a proposito: si algo falla moviendo el historico,
-  /// la ficha origen sigue ahi y no se pierde el rastro de a quien pertenecia.
-  ///
-  /// OJO: no se puede deshacer.
-  Future<({int precios, int compras})> fusionarProveedores({
-    required String de,
-    required String a,
-    required String nombreDestino,
-  }) async {
-    if (de == a) {
-      throw ArgumentError('No se puede fusionar un proveedor consigo mismo.');
-    }
-
-    final r = await reasignarProveedor(
-      de: de,
-      a: a,
-      nombreDestino: nombreDestino,
-    );
-
-    await _proveedores.doc(de).delete();
-    return r;
-  }
-
   /// Borra los precios de un proveedor. Con [soloTarifa] en true respeta los
   /// que salieron de una compra, que son el gasto real y cambiarian los
   /// informes de esos meses.

@@ -7,7 +7,6 @@ import 'package:share_plus/share_plus.dart';
 import '../services/firestore_service.dart';
 import '../services/respaldo_service.dart';
 import 'huerfanos_screen.dart';
-import 'duplicados_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -195,42 +194,6 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => HuerfanosScreen(db: widget.db)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.content_copy),
-                      const SizedBox(width: 8),
-                      Text('Proveedores repetidos',
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'El mismo proveedor con dos fichas, por estar escrito '
-                    'de dos formas. Su histórico de precios queda partido y '
-                    'la comparativa los trata como si compitieran entre sí.',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.search),
-                    label: const Text('Buscar repetidos'),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => DuplicadosScreen(db: widget.db)),
                     ),
                   ),
                 ],
