@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/firestore_service.dart';
 import '../services/respaldo_service.dart';
+import 'huerfanos_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -162,6 +163,43 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
             const SizedBox(height: 12),
             _resultado(_ultima!),
           ],
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.link_off),
+                      const SizedBox(width: 8),
+                      Text('Proveedores sin ficha',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Precios y compras que apuntan a un proveedor borrado. '
+                    'Siguen contando en la comparativa, pero sin nombre. '
+                    'Si se borraron por estar duplicados, aquí se fusionan '
+                    'con el que conservaste.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Comprobar'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => HuerfanosScreen(db: widget.db)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (_guardadas.isNotEmpty) ...[
             const SizedBox(height: 24),
             Text('Copias en el dispositivo (${_guardadas.length})',
