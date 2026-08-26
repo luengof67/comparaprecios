@@ -66,6 +66,79 @@ class FirestoreService {
 
   Future<void> borrarProveedor(String id) => _proveedores.doc(id).delete();
 
+  /// Quita un alias mal aprendido.
+  ///
+  /// Hace falta cuando en una importacion se eligio el proveedor equivocado:
+  /// ese nombre queda asociado para siempre y todos los albaranes siguientes
+  /// se derivan solos al proveedor que no es. "Benivaldo" acabando dentro de
+  /// "Aldo" es el caso tipico, porque un nombre contiene al otro.
+  Future<bool> quitarAliasProveedor(String proveedorId, String texto) async {
+    final ref = _proveedores.doc(proveedorId);
+    final snap = await ref.get();
+    final d = snap.data() as Map<String, dynamic>?;
+    if (d == null) return false;
+
+    final lista = ((d['alias'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
+    final buscado = Proveedor.norm(texto);
+    final quedan =
+        lista.where((a) => Proveedor.norm(a) != buscado).toList();
+    if (quedan.length == lista.length) return false;
+
+    await ref.update({'alias': quedan});
+    return true;
+  }
+
+  /// Pasa UNA compra a otro proveedor, con los precios que dejo en el
+  /// historico.
+  ///
+  /// Distinto de fusionar: alli se movia todo. Aqui se elige albaran por
+  /// albaran, que es lo que hace falta cuando dos proveedores se mezclaron
+  /// pero los dos siguen existiendo.
+  Future<int> moverCompraDeProveedor({
+    required Compra compra,
+    required String nuevoProveedorId,
+    required String nuevoProveedorNombre,
+  }) async {
+    if (compra.proveedorId == nuevoProveedorId) return 0;
+
+    // Los precios que salieron de esta compra: mismo producto, mismo
+    // proveedor de origen, mismo dia y fuente "compra".
+    var movidos = 0;
+    for (final l in compra.lineas) {
+      final s = await _precios
+          .where('productoId', isEqualTo: l.productoId)
+          .get();
+      for (final doc in s.docs) {
+        final d = doc.data() as Map<String, dynamic>;
+        if (d['proveedorId'] != compra.proveedorId) continue;
+        if (d['fuente'] != 'compra') continue;
+        final t = (d['fecha'] as Timestamp?)?.toDate();
+        if (t == null ||
+            t.year != compra.fecha.year ||
+            t.month != compra.fecha.month ||
+            t.day != compra.fecha.day) {
+          continue;
+        }
+        await doc.reference.update({'proveedorId': nuevoProveedorId});
+        movidos++;
+        break;
+      }
+    }
+
+    await _compras.doc(compra.id).update({
+      'proveedorId': nuevoProveedorId,
+      'proveedorNombre': nuevoProveedorNombre,
+    });
+
+    return movidos;
+  }
+
+  /// Pasa un precio suelto a otro proveedor.
+  Future<void> moverPrecio(String precioId, String nuevoProveedorId) =>
+      _precios.doc(precioId).update({'proveedorId': nuevoProveedorId});
+
   /// Crea (o restaura) un proveedor con un id CONCRETO, en vez de dejar que
   /// Firestore invente uno. Sirve para recuperar un proveedor borrado sin
   /// perder su historico: si vuelve con el mismo id, sus precios y compras

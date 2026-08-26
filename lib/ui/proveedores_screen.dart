@@ -131,12 +131,17 @@ class _ProveedorFormState extends State<_ProveedorForm> {
   late final TextEditingController _contacto;
   late int _color;
 
+  /// Los nombres con que este proveedor aparece en los albaranes.
+  /// Copia local para poder quitarlos sin cerrar la ficha.
+  late List<String> _alias;
+
   @override
   void initState() {
     super.initState();
     _nombre = TextEditingController(text: widget.existente?.nombre ?? '');
     _contacto = TextEditingController(text: widget.existente?.contacto ?? '');
     _color = widget.existente?.color ?? _coloresProveedor.first;
+    _alias = [...(widget.existente?.alias ?? const [])];
   }
 
   @override
@@ -155,6 +160,24 @@ class _ProveedorFormState extends State<_ProveedorForm> {
       color: _color,
     ));
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Quita un alias mal aprendido.
+  ///
+  /// A partir de aqui, ese nombre de albaran vuelve a preguntarse en la
+  /// siguiente importacion en vez de derivarse solo.
+  Future<void> _quitarAlias(String alias) async {
+    final id = widget.existente?.id;
+    if (id == null || id.isEmpty) return;
+    try {
+      await widget.db.quitarAliasProveedor(id, alias);
+      if (!mounted) return;
+      setState(() => _alias.remove(alias));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('No se ha podido quitar: $e')));
+    }
   }
 
   Future<void> _confirmarBorrado() async {
@@ -233,6 +256,29 @@ class _ProveedorFormState extends State<_ProveedorForm> {
               );
             }).toList(),
           ),
+          if (_alias.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Nombres con los que llega en los albaranes'),
+            const SizedBox(height: 4),
+            const Text(
+              'Se aprenden al importar. Si alguno no es de este proveedor, '
+              'quítalo: mientras esté, sus albaranes se derivarán aquí.',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _alias
+                  .map((a) => Chip(
+                        label: Text(a, style: const TextStyle(fontSize: 11)),
+                        onDeleted: () => _quitarAlias(a),
+                        deleteIcon: const Icon(Icons.close, size: 15),
+                        visualDensity: VisualDensity.compact,
+                      ))
+                  .toList(),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [

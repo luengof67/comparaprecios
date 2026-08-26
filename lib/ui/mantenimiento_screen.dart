@@ -11,6 +11,7 @@ import 'duplicados_screen.dart';
 import 'factores_screen.dart';
 import 'revisar_lineas_screen.dart';
 import 'dudosas_screen.dart';
+import 'mover_datos_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -342,6 +343,42 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => DudosasScreen(db: widget.db)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.swap_horiz),
+                      const SizedBox(width: 8),
+                      Text('Mover a otro proveedor',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Albaranes y precios que acabaron en el proveedor '
+                    'equivocado. Se eligen uno a uno y se pasan al que toca, '
+                    'sin fusionar las dos fichas.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Mover datos'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => MoverDatosScreen(db: widget.db)),
                     ),
                   ),
                 ],
