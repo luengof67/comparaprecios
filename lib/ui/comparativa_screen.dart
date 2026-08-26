@@ -371,7 +371,7 @@ class _ComparativaScreenState extends State<ComparativaScreen> {
                 0: const pw.FlexColumnWidth(3),
                 1: const pw.FlexColumnWidth(2.4),
                 2: const pw.FlexColumnWidth(1.5),
-                3: const pw.FlexColumnWidth(2.4),
+                3: const pw.FlexColumnWidth(2.7),
                 4: const pw.FlexColumnWidth(1.5),
                 5: const pw.FlexColumnWidth(1.5),
               },
@@ -379,7 +379,7 @@ class _ComparativaScreenState extends State<ComparativaScreen> {
                 'Producto',
                 'Más barato',
                 'Precio',
-                'Siguiente',
+                'Siguiente y su precio',
                 'Dif.',
                 'Ahorro/sem'
               ],
@@ -391,7 +391,12 @@ class _ComparativaScreenState extends State<ComparativaScreen> {
                   f.producto.nombre,
                   b?.proveedorNombre ?? '-',
                   b == null ? '-' : '${b.precioUnitario.toStringAsFixed(2)} $u',
-                  s?.proveedorNombre ?? '-',
+                  // precio del segundo, debajo del nombre: sin el, el
+                  // porcentaje de la columna siguiente no se puede juzgar
+                  s == null
+                      ? '-'
+                      : '${s.proveedorNombre}\n'
+                          '${s.precioUnitario.toStringAsFixed(2)} $u',
                   f.diferenciaPorcentaje <= 0
                       ? '-'
                       : '-${f.diferenciaPorcentaje.toStringAsFixed(0)}%',

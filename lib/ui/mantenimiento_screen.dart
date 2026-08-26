@@ -10,6 +10,7 @@ import 'huerfanos_screen.dart';
 import 'duplicados_screen.dart';
 import 'factores_screen.dart';
 import 'revisar_lineas_screen.dart';
+import 'dudosas_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -305,6 +306,42 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => RevisarLineasScreen(db: widget.db)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.rule),
+                      const SizedBox(width: 8),
+                      Text('Comparativas dudosas',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Productos donde dos proveedores dan precios tan '
+                    'distintos que uno tiene que estar mal. Son los que de '
+                    'verdad ensucian las decisiones de compra.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Revisar comparativas'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => DudosasScreen(db: widget.db)),
                     ),
                   ),
                 ],
