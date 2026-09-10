@@ -8,77 +8,120 @@ import '../models/producto.dart';
 import '../ui/formato.dart';
 import 'fuentes_pdf.dart';
 
-/// Lo que se compro de un producto en el mes: cantidad total y gasto total.
-class _Linea {
-  final String productoId;
+/// Un producto en un mes: cantidad y gasto sumados.
+class MesProducto {
+  final DateTime mes;
+  double cantidad = 0;
+  double gasto = 0;
+  int compras = 0;
+  MesProducto(this.mes);
+
+  double get precioMedio => cantidad > 0 ? gasto / cantidad : 0;
+}
+
+/// Un producto con su historico por meses.
+class ResumenProducto {
+  final String clave;
   final String nombre;
   final String unidad;
   final String categoria;
-  double cantidad = 0;
-  double gasto = 0;
-  int veces = 0;
+  final Map<String, MesProducto> meses = {};
 
-  _Linea({
-    required this.productoId,
+  ResumenProducto({
+    required this.clave,
     required this.nombre,
     required this.unidad,
     required this.categoria,
   });
+
+  static String claveMes(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}';
+
+  MesProducto? del(DateTime mes) => meses[claveMes(mes)];
+
+  /// Del mas reciente al mas antiguo.
+  List<MesProducto> get ordenados {
+    final l = meses.values.toList()..sort((a, b) => b.mes.compareTo(a.mes));
+    return l;
+  }
+
+  double get gastoTotal => meses.values.fold(0, (s, m) => s + m.gasto);
+  double get cantidadTotal => meses.values.fold(0, (s, m) => s + m.cantidad);
 }
 
-/// Informe de productos comprados en un mes.
-///
-/// Solo lo que se compro de verdad: sale de las compras, no de los precios de
-/// tarifa. Cada producto una vez, con su cantidad y su gasto sumados, por
-/// categoria y ordenado por donde se va el dinero.
+/// Que se ha comprado, cuanto y por cuanto. Todo sale de las compras
+/// registradas, no de los precios de tarifa: es lo que se pago de verdad.
 class InformeProductosService {
+  /// Agrupa todas las compras por producto y mes.
+  static Map<String, ResumenProducto> agrupar(
+      List<Compra> compras, List<Producto> productos) {
+    final cat = {for (final p in productos) p.id: p.categoria};
+    final uni = {for (final p in productos) p.id: p.unidadBase.nombre};
+
+    final salida = <String, ResumenProducto>{};
+    for (final c in compras) {
+      final mes = DateTime(c.fecha.year, c.fecha.month);
+      for (final l in c.lineas) {
+        final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
+        final r = salida.putIfAbsent(
+          clave,
+          () => ResumenProducto(
+            clave: clave,
+            nombre: l.productoNombre,
+            unidad: uni[l.productoId] ?? l.unidad,
+            categoria: cat[l.productoId] ?? 'Sin categoría',
+          ),
+        );
+        final m = r.meses.putIfAbsent(
+            ResumenProducto.claveMes(mes), () => MesProducto(mes));
+        m.cantidad += l.cantidad;
+        m.gasto += l.total;
+        m.compras++;
+      }
+    }
+    return salida;
+  }
+
+  static String _num(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  static String _mesLargo(DateTime m) =>
+      DateFormat('MMMM yyyy', 'es_ES').format(m);
+
+  static String _mesCorto(DateTime m) =>
+      DateFormat('MMM yyyy', 'es_ES').format(m);
+
+  // ------------------------------------------------------------ PDF del mes
+
+  /// Listado de un mes: por categoria y ordenado por gasto.
   static Future<void> generarPdf({
     required DateTime mes,
     required List<Compra> compras,
     required List<Producto> productos,
   }) async {
-    final delMes = compras
-        .where((c) => c.fecha.year == mes.year && c.fecha.month == mes.month)
+    final todos = agrupar(compras, productos);
+    final delMes = todos.values
+        .map((r) => (r, r.del(mes)))
+        .where((e) => e.$2 != null)
         .toList();
 
-    final catPorId = {for (final p in productos) p.id: p.categoria};
-    final unidadPorId = {
-      for (final p in productos) p.id: p.unidadBase.nombre,
-    };
-
-    // Sumar por producto.
-    final porProducto = <String, _Linea>{};
-    for (final c in delMes) {
-      for (final l in c.lineas) {
-        final key = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
-        final linea = porProducto.putIfAbsent(
-          key,
-          () => _Linea(
-            productoId: l.productoId,
-            nombre: l.productoNombre,
-            unidad: unidadPorId[l.productoId] ?? l.unidad,
-            categoria: catPorId[l.productoId] ?? 'Sin categoría',
-          ),
-        );
-        linea.cantidad += l.cantidad;
-        linea.gasto += l.total;
-        linea.veces++;
-      }
+    final porCategoria = <String, List<(ResumenProducto, MesProducto)>>{};
+    for (final e in delMes) {
+      porCategoria.putIfAbsent(e.$1.categoria, () => []).add((e.$1, e.$2!));
     }
+    double suma(List<(ResumenProducto, MesProducto)> l) =>
+        l.fold(0, (s, e) => s + e.$2.gasto);
 
-    // Agrupar por categoria y ordenar por gasto, en los dos niveles.
-    final porCategoria = <String, List<_Linea>>{};
-    for (final l in porProducto.values) {
-      porCategoria.putIfAbsent(l.categoria, () => []).add(l);
-    }
     final categorias = porCategoria.entries.toList()
-      ..sort((a, b) => _suma(b.value).compareTo(_suma(a.value)));
+      ..sort((a, b) => suma(b.value).compareTo(suma(a.value)));
     for (final e in categorias) {
-      e.value.sort((a, b) => b.gasto.compareTo(a.gasto));
+      e.value.sort((a, b) => b.$2.gasto.compareTo(a.$2.gasto));
     }
 
-    final totalGasto = porProducto.values.fold<double>(0, (s, l) => s + l.gasto);
-    final nombreMes = DateFormat('MMMM yyyy', 'es_ES').format(mes);
+    final totalGasto = delMes.fold<double>(0, (s, e) => s + e.$2!.gasto);
+    final nCompras = compras
+        .where((c) => c.fecha.year == mes.year && c.fecha.month == mes.month)
+        .length;
 
     final doc = await FuentesPdf.documento();
     doc.addPage(
@@ -86,31 +129,19 @@ class InformeProductosService {
         pageFormat: PdfPageFormat.a4,
         build: (ctx) {
           final w = <pw.Widget>[
-            pw.Header(
-              level: 0,
-              child: pw.Text('Productos comprados · $nombreMes',
-                  style: pw.TextStyle(
-                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
-            ),
-            pw.Text('Generado el ${fecha(DateTime.now())}'),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              '${porProducto.length} productos distintos en '
-              '${delMes.length} compras · ${euros(totalGasto)} en total',
-              style: const pw.TextStyle(fontSize: 10),
-            ),
-            pw.SizedBox(height: 12),
+            _cabecera('Productos comprados · ${_mesLargo(mes)}',
+                '${delMes.length} productos distintos en $nCompras compras · '
+                    '${euros(totalGasto)} en total'),
           ];
 
-          if (porProducto.isEmpty) {
+          if (delMes.isEmpty) {
             w.add(pw.Text('No hay compras registradas en este mes.'));
             return w;
           }
 
           for (final e in categorias) {
-            final sub = _suma(e.value);
+            final sub = suma(e.value);
             final pct = totalGasto > 0 ? sub / totalGasto * 100 : 0;
-
             w.add(pw.SizedBox(height: 10));
             w.add(pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -124,57 +155,161 @@ class InformeProductosService {
               ],
             ));
             w.add(pw.SizedBox(height: 4));
-            w.add(pw.TableHelper.fromTextArray(
-              headerStyle:
-                  pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-              cellStyle: const pw.TextStyle(fontSize: 9),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerRight,
-                2: pw.Alignment.centerRight,
-              },
-              columnWidths: {
-                0: const pw.FlexColumnWidth(5),
-                1: const pw.FlexColumnWidth(2),
-                2: const pw.FlexColumnWidth(2),
-              },
-              headers: ['Producto', 'Cantidad', 'Gasto'],
-              data: e.value
-                  .map((l) => [
-                        l.nombre,
-                        '${_num(l.cantidad)} ${l.unidad}',
-                        euros(l.gasto),
+            w.add(_tabla(
+              cabeceras: ['Producto', 'Cantidad', 'Gasto'],
+              anchos: [5, 2, 2],
+              filas: e.value
+                  .map((x) => [
+                        x.$1.nombre,
+                        '${_num(x.$2.cantidad)} ${x.$1.unidad}',
+                        euros(x.$2.gasto),
                       ])
                   .toList(),
             ));
           }
 
-          w.add(pw.SizedBox(height: 16));
-          w.add(pw.Divider());
-          w.add(pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.end,
-            children: [
-              pw.Text('TOTAL ${euros(totalGasto)}',
-                  style: pw.TextStyle(
-                      fontSize: 13, fontWeight: pw.FontWeight.bold)),
-            ],
-          ));
-
+          w.add(_total(totalGasto));
           return w;
         },
       ),
     );
 
     await Printing.layoutPdf(
-      name: 'productos_${mes.year}-${mes.month.toString().padLeft(2, '0')}.pdf',
+      name: 'productos_${ResumenProducto.claveMes(mes)}.pdf',
       onLayout: (format) async => doc.save(),
     );
   }
 
-  static double _suma(List<_Linea> l) => l.fold(0, (s, x) => s + x.gasto);
+  // ------------------------------------------------------ PDF del historico
 
-  static String _num(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+  /// Historico por meses de unos productos concretos: los que salieron en la
+  /// busqueda. Una tabla por producto, con cantidad, precio medio y gasto de
+  /// cada mes.
+  static Future<void> generarHistoricoPdf({
+    required List<ResumenProducto> productos,
+    required String titulo,
+  }) async {
+    final totalGasto = productos.fold<double>(0, (s, r) => s + r.gastoTotal);
+
+    final doc = await FuentesPdf.documento();
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (ctx) {
+          final w = <pw.Widget>[
+            _cabecera('Histórico de compras · $titulo',
+                '${productos.length} producto${productos.length == 1 ? "" : "s"} · '
+                    '${euros(totalGasto)} en total'),
+          ];
+
+          for (final r in productos) {
+            final meses = r.ordenados;
+            w.add(pw.SizedBox(height: 12));
+            w.add(pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(r.nombre,
+                    style: pw.TextStyle(
+                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                pw.Text(
+                    '${_num(r.cantidadTotal)} ${r.unidad} · ${euros(r.gastoTotal)}',
+                    style: pw.TextStyle(
+                        fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              ],
+            ));
+            w.add(pw.Text(r.categoria,
+                style: const pw.TextStyle(
+                    fontSize: 9, color: PdfColors.grey700)));
+            w.add(pw.SizedBox(height: 4));
+            w.add(_tabla(
+              cabeceras: ['Mes', 'Cantidad', '€/${r.unidad}', 'Gasto'],
+              anchos: [3, 2, 2, 2],
+              filas: [
+                for (var i = 0; i < meses.length; i++)
+                  [
+                    _mesCorto(meses[i].mes),
+                    '${_num(meses[i].cantidad)} ${r.unidad}',
+                    _conFlecha(meses[i],
+                        i + 1 < meses.length ? meses[i + 1] : null),
+                    euros(meses[i].gasto),
+                  ],
+              ],
+            ));
+          }
+
+          w.add(_total(totalGasto));
+          return w;
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      name: 'historico_productos.pdf',
+      onLayout: (format) async => doc.save(),
+    );
+  }
+
+  /// El precio medio con una marca si subio o bajo respecto al mes anterior.
+  static String _conFlecha(MesProducto m, MesProducto? anterior) {
+    final p = euros3(m.precioMedio);
+    if (anterior == null || anterior.precioMedio <= 0 || m.precioMedio <= 0) {
+      return p;
+    }
+    final dif = (m.precioMedio - anterior.precioMedio) / anterior.precioMedio;
+    if (dif > 0.03) return '▲ $p';
+    if (dif < -0.03) return '▼ $p';
+    return p;
+  }
+
+  // ------------------------------------------------------------ piezas PDF
+
+  static pw.Widget _cabecera(String titulo, String resumen) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Header(
+            level: 0,
+            child: pw.Text(titulo,
+                style: pw.TextStyle(
+                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Text('Generado el ${fecha(DateTime.now())}'),
+          pw.SizedBox(height: 4),
+          pw.Text(resumen, style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 8),
+        ],
+      );
+
+  static pw.Widget _tabla({
+    required List<String> cabeceras,
+    required List<double> anchos,
+    required List<List<String>> filas,
+  }) =>
+      pw.TableHelper.fromTextArray(
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+        cellStyle: const pw.TextStyle(fontSize: 9),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+        cellAlignments: {
+          for (var i = 0; i < cabeceras.length; i++)
+            i: i == 0 ? pw.Alignment.centerLeft : pw.Alignment.centerRight,
+        },
+        columnWidths: {
+          for (var i = 0; i < anchos.length; i++)
+            i: pw.FlexColumnWidth(anchos[i]),
+        },
+        headers: cabeceras,
+        data: filas,
+      );
+
+  static pw.Widget _total(double total) => pw.Column(children: [
+        pw.SizedBox(height: 16),
+        pw.Divider(),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Text('TOTAL ${euros(total)}',
+                style: pw.TextStyle(
+                    fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          ],
+        ),
+      ]);
 }

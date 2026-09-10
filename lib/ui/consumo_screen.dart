@@ -9,12 +9,12 @@ import 'formato.dart';
 
 /// Que se ha comprado, cuanto y por cuanto.
 ///
-/// Sin buscar: el listado del mes elegido, ordenado por gasto.
-/// Buscando: los productos que casan, cada uno con una fila por mes. Ahi se
-/// ve si el consumo sube, y si el precio sube con el.
+/// Sin filtros: el listado del mes elegido, ordenado por gasto.
+/// Con filtros: los productos que casan, cada uno con una fila por mes.
 ///
-/// Todo sale de las compras registradas, no de los precios de tarifa: es lo
-/// que se pago de verdad.
+/// Los filtros son fichas de busqueda (varias, se suman: "platanos" +
+/// "kiwis" + "nectarinas" en el mismo informe) y una seccion. El PDF imprime
+/// lo que se este viendo.
 class ConsumoScreen extends StatefulWidget {
   final FirestoreService db;
   const ConsumoScreen({super.key, required this.db});
@@ -23,61 +23,28 @@ class ConsumoScreen extends StatefulWidget {
   State<ConsumoScreen> createState() => _ConsumoScreenState();
 }
 
-/// Un producto en un mes: cantidad y gasto sumados.
-class _Mes {
-  final DateTime mes;
-  double cantidad = 0;
-  double gasto = 0;
-  int compras = 0;
-  _Mes(this.mes);
-
-  double get precioMedio => cantidad > 0 ? gasto / cantidad : 0;
-}
-
-/// Un producto con su historico por meses.
-class _Resumen {
-  final String clave;
-  final String nombre;
-  final String unidad;
-  final String categoria;
-  final Map<String, _Mes> meses = {};
-
-  _Resumen({
-    required this.clave,
-    required this.nombre,
-    required this.unidad,
-    required this.categoria,
-  });
-
-  static String claveMes(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}';
-
-  _Mes? del(DateTime mes) => meses[claveMes(mes)];
-
-  List<_Mes> get ordenados {
-    final l = meses.values.toList()..sort((a, b) => b.mes.compareTo(a.mes));
-    return l;
-  }
-
-  double get gastoTotal => meses.values.fold(0, (s, m) => s + m.gasto);
-  double get cantidadTotal => meses.values.fold(0, (s, m) => s + m.cantidad);
-}
-
 class _ConsumoScreenState extends State<ConsumoScreen> {
   bool _cargando = true;
   String? _error;
 
   List<Compra> _compras = const [];
   List<Producto> _productos = const [];
+  Map<String, ResumenProducto> _resumenes = const {};
 
-  /// Meses con compras, del mas reciente al mas antiguo.
   List<DateTime> _mesesDisponibles = const [];
   DateTime? _mes;
 
   final _buscador = TextEditingController();
-  String _busqueda = '';
 
-  Map<String, _Resumen> _resumenes = const {};
+  /// Terminos de busqueda confirmados. Un producto entra si casa con
+  /// cualquiera de ellos.
+  final List<String> _terminos = [];
+
+  /// Lo que se esta escribiendo, todavia sin confirmar con Enter. Tambien
+  /// filtra, para que la lista responda mientras se teclea.
+  String _escribiendo = '';
+
+  String _categoria = '';
 
   @override
   void initState() {
@@ -104,7 +71,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       final meses = <String, DateTime>{};
       for (final c in compras) {
         final m = DateTime(c.fecha.year, c.fecha.month);
-        meses[_Resumen.claveMes(m)] = m;
+        meses[ResumenProducto.claveMes(m)] = m;
       }
       final lista = meses.values.toList()..sort((a, b) => b.compareTo(a));
 
@@ -113,7 +80,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
         _productos = productos;
         _mesesDisponibles = lista;
         _mes ??= lista.isEmpty ? null : lista.first;
-        _resumenes = _agrupar(compras, productos);
+        _resumenes = InformeProductosService.agrupar(compras, productos);
         _cargando = false;
       });
     } catch (e) {
@@ -125,58 +92,83 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
     }
   }
 
-  Map<String, _Resumen> _agrupar(
-      List<Compra> compras, List<Producto> productos) {
-    final cat = {for (final p in productos) p.id: p.categoria};
-    final uni = {for (final p in productos) p.id: p.unidadBase.nombre};
+  // ----------------------------------------------------------------- filtros
 
-    final salida = <String, _Resumen>{};
-    for (final c in compras) {
-      final mes = DateTime(c.fecha.year, c.fecha.month);
-      for (final l in c.lineas) {
-        final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
-        final r = salida.putIfAbsent(
-          clave,
-          () => _Resumen(
-            clave: clave,
-            nombre: l.productoNombre,
-            unidad: uni[l.productoId] ?? l.unidad,
-            categoria: cat[l.productoId] ?? 'Sin categoría',
-          ),
-        );
-        final m = r.meses.putIfAbsent(_Resumen.claveMes(mes), () => _Mes(mes));
-        m.cantidad += l.cantidad;
-        m.gasto += l.total;
-        m.compras++;
-      }
-    }
-    return salida;
-  }
+  bool get _hayFiltro =>
+      _terminos.isNotEmpty || _escribiendo.isNotEmpty || _categoria.isNotEmpty;
 
   /// Los alias aprendidos tambien cuentan: "colitas de bacalao 150gr" tiene
   /// que encontrar "bacalao".
-  bool _casa(_Resumen r, String q) {
+  bool _casaTermino(ResumenProducto r, String q) {
     if (r.nombre.toLowerCase().contains(q)) return true;
-    final p = _productos.where((x) => x.id == r.clave).firstOrNull;
-    if (p == null) return false;
-    return p.alias.any((a) => a.texto.toLowerCase().contains(q));
+    for (final p in _productos) {
+      if (p.id != r.clave) continue;
+      return p.alias.any((a) => a.texto.toLowerCase().contains(q));
+    }
+    return false;
   }
 
-  String _etiquetaMes(DateTime m) =>
-      DateFormat('MMM yyyy', 'es_ES').format(m);
+  bool _pasaFiltros(ResumenProducto r) {
+    if (_categoria.isNotEmpty && r.categoria != _categoria) return false;
+    final terminos = [
+      ..._terminos,
+      if (_escribiendo.isNotEmpty) _escribiendo,
+    ];
+    if (terminos.isEmpty) return true;
+    return terminos.any((t) => _casaTermino(r, t));
+  }
+
+  List<ResumenProducto> get _filtrados {
+    final l = _resumenes.values.where(_pasaFiltros).toList()
+      ..sort((a, b) => b.gastoTotal.compareTo(a.gastoTotal));
+    return l;
+  }
+
+  void _confirmarTermino() {
+    final t = _buscador.text.toLowerCase().trim();
+    _buscador.clear();
+    setState(() {
+      _escribiendo = '';
+      if (t.isNotEmpty && !_terminos.contains(t)) _terminos.add(t);
+    });
+  }
+
+  List<String> get _categorias {
+    final s = _resumenes.values.map((r) => r.categoria).toSet().toList()
+      ..sort();
+    return s;
+  }
+
+  String _tituloFiltro() {
+    final partes = <String>[
+      if (_categoria.isNotEmpty) _categoria,
+      ..._terminos,
+      if (_escribiendo.isNotEmpty) _escribiendo,
+    ];
+    return partes.join(', ');
+  }
+
+  String _mesCorto(DateTime m) => DateFormat('MMM yyyy', 'es_ES').format(m);
+
+  // ------------------------------------------------------------------ build
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Productos comprados')),
-      floatingActionButton: (_mes == null || _busqueda.isNotEmpty)
+      floatingActionButton: _cargando || _mes == null
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => InformeProductosService.generarPdf(
-                mes: _mes!,
-                compras: _compras,
-                productos: _productos,
-              ),
+              onPressed: _hayFiltro
+                  ? () => InformeProductosService.generarHistoricoPdf(
+                        productos: _filtrados,
+                        titulo: _tituloFiltro(),
+                      )
+                  : () => InformeProductosService.generarPdf(
+                        mes: _mes!,
+                        compras: _compras,
+                        productos: _productos,
+                      ),
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('PDF'),
             ),
@@ -204,32 +196,91 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: TextField(
-            controller: _buscador,
-            decoration: InputDecoration(
-              hintText: 'Buscar producto…',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              border: const OutlineInputBorder(),
-              suffixIcon: _busqueda.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _buscador.clear();
-                        setState(() => _busqueda = '');
-                      },
-                    ),
-            ),
-            onChanged: (v) => setState(() => _busqueda = v.toLowerCase().trim()),
-          ),
-        ),
-        Expanded(
-          child: _busqueda.isEmpty ? _listaDelMes() : _historico(),
-        ),
+        _filtros(),
+        Expanded(child: _hayFiltro ? _historico() : _listaDelMes()),
       ],
+    );
+  }
+
+  Widget _filtros() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _buscador,
+                  decoration: InputDecoration(
+                    hintText: _terminos.isEmpty
+                        ? 'Buscar producto… (Enter para añadir otro)'
+                        : 'Añadir otro producto…',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _escribiendo.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Añadir a la búsqueda',
+                            icon: const Icon(Icons.add),
+                            onPressed: _confirmarTermino,
+                          ),
+                  ),
+                  onChanged: (v) =>
+                      setState(() => _escribiendo = v.toLowerCase().trim()),
+                  onSubmitted: (_) => _confirmarTermino(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _categoria,
+                  isDense: true,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    labelText: 'Sección',
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('Todas')),
+                    for (final c in _categorias)
+                      DropdownMenuItem(value: c, child: Text(c)),
+                  ],
+                  onChanged: (v) => setState(() => _categoria = v ?? ''),
+                ),
+              ),
+            ],
+          ),
+          if (_terminos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final t in _terminos)
+                    InputChip(
+                      label: Text(t),
+                      onDeleted: () => setState(() => _terminos.remove(t)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (_terminos.length > 1)
+                    ActionChip(
+                      label: const Text('Limpiar'),
+                      onPressed: () => setState(_terminos.clear),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -242,17 +293,16 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
         .where((e) => e.$2 != null)
         .toList()
       ..sort((a, b) => b.$2!.gasto.compareTo(a.$2!.gasto));
-
     final total = filas.fold<double>(0, (s, e) => s + e.$2!.gasto);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 90),
       children: [
         Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                initialValue: _Resumen.claveMes(mes),
+                initialValue: ResumenProducto.claveMes(mes),
                 isDense: true,
                 decoration: const InputDecoration(
                   isDense: true,
@@ -262,11 +312,11 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                 items: [
                   for (final m in _mesesDisponibles)
                     DropdownMenuItem(
-                        value: _Resumen.claveMes(m),
-                        child: Text(_etiquetaMes(m))),
+                        value: ResumenProducto.claveMes(m),
+                        child: Text(_mesCorto(m))),
                 ],
                 onChanged: (v) => setState(() => _mes = _mesesDisponibles
-                    .firstWhere((m) => _Resumen.claveMes(m) == v)),
+                    .firstWhere((m) => ResumenProducto.claveMes(m) == v)),
               ),
             ),
             const SizedBox(width: 12),
@@ -305,10 +355,10 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                     ),
                     trailing: Text(euros(m.gasto),
                         style: const TextStyle(fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      _buscador.text = r.nombre;
-                      setState(() => _busqueda = r.nombre.toLowerCase());
-                    },
+                    onTap: () => setState(() {
+                      final t = r.nombre.toLowerCase();
+                      if (!_terminos.contains(t)) _terminos.add(t);
+                    }),
                   ),
               ],
             ),
@@ -320,29 +370,38 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   // ------------------------------------------------- historico por producto
 
   Widget _historico() {
-    final hallados = _resumenes.values
-        .where((r) => _casa(r, _busqueda))
-        .toList()
-      ..sort((a, b) => b.gastoTotal.compareTo(a.gastoTotal));
+    final hallados = _filtrados;
 
     if (hallados.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
-          child: Text('Ningún producto comprado con ese nombre.',
+          child: Text('Ningún producto comprado con esa búsqueda.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey)),
         ),
       );
     }
 
+    final total = hallados.fold<double>(0, (s, r) => s + r.gastoTotal);
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 40),
-      children: [for (final r in hallados) _tarjetaProducto(r)],
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 90),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 2),
+          child: Text(
+            '${hallados.length} producto${hallados.length == 1 ? "" : "s"} · '
+            '${euros(total)} en total',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        for (final r in hallados) _tarjetaProducto(r),
+      ],
     );
   }
 
-  Widget _tarjetaProducto(_Resumen r) {
+  Widget _tarjetaProducto(ResumenProducto r) {
     final meses = r.ordenados;
 
     return Card(
@@ -361,7 +420,6 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 10),
-            // Cabecera de la tabla
             Row(
               children: [
                 const SizedBox(width: 80, child: Text('Mes', style: _cab)),
@@ -387,9 +445,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   static const _cab = TextStyle(fontSize: 11, color: Colors.grey);
 
-  /// Una fila de mes. Si hay mes anterior, marca si el precio medio subio o
-  /// bajo respecto a el.
-  Widget _filaMes(_Mes m, _Mes? anterior, _Resumen r) {
+  Widget _filaMes(MesProducto m, MesProducto? anterior, ResumenProducto r) {
     Color? color;
     IconData? icono;
     if (anterior != null && anterior.precioMedio > 0 && m.precioMedio > 0) {
@@ -409,8 +465,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(_etiquetaMes(m.mes),
-                style: const TextStyle(fontSize: 13)),
+            child: Text(_mesCorto(m.mes), style: const TextStyle(fontSize: 13)),
           ),
           Expanded(
             child: Text('${_num(m.cantidad)} ${r.unidad}',
@@ -440,8 +495,4 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   static String _num(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }
