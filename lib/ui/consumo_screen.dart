@@ -35,6 +35,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   DateTime? _mes;
 
   final _buscador = TextEditingController();
+  final _foco = FocusNode();
 
   /// Terminos de busqueda confirmados. Un producto entra si casa con
   /// cualquiera de ellos.
@@ -55,6 +56,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   @override
   void dispose() {
     _buscador.dispose();
+    _foco.dispose();
     super.dispose();
   }
 
@@ -131,6 +133,9 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       _escribiendo = '';
       if (t.isNotEmpty && !_terminos.contains(t)) _terminos.add(t);
     });
+    // Enter le quita el foco al campo; sin esto hay que volver a pinchar
+    // para escribir el siguiente producto.
+    _foco.requestFocus();
   }
 
   List<String> get _categorias {
@@ -213,6 +218,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                 flex: 3,
                 child: TextField(
                   controller: _buscador,
+                  focusNode: _foco,
                   decoration: InputDecoration(
                     hintText: _terminos.isEmpty
                         ? 'Buscar producto… (Enter para añadir otro)'
