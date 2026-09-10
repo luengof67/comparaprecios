@@ -10,6 +10,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/analitica_service.dart';
 import '../services/informe_mensual_service.dart';
+import '../services/informe_productos_service.dart';
 import '../services/firestore_service.dart';
 import 'comparador_screen.dart';
 import 'comparativa_screen.dart';
@@ -40,6 +41,11 @@ class _InformesScreenState extends State<InformesScreen> {
       appBar: AppBar(
         title: const Text('Informes'),
         actions: [
+          IconButton(
+            tooltip: 'Productos comprados (PDF)',
+            icon: const Icon(Icons.list_alt),
+            onPressed: () => _informeProductos(context),
+          ),
           IconButton(
             tooltip: 'Cierre de mes (PDF)',
             icon: const Icon(Icons.picture_as_pdf),
@@ -196,6 +202,41 @@ class _InformesScreenState extends State<InformesScreen> {
         label: const Text('PDF'),
       ),
     );
+  }
+
+  /// Elige un mes y genera el listado de productos comprados: solo cantidad
+  /// y gasto, por categoria y ordenado por donde se va el dinero.
+  Future<void> _informeProductos(BuildContext context) async {
+    final compras = await widget.db.compras().first;
+    if (compras.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No hay compras registradas.')));
+      }
+      return;
+    }
+    final meses = <DateTime>{};
+    for (final c in compras) {
+      meses.add(DateTime(c.fecha.year, c.fecha.month));
+    }
+    final lista = meses.toList()..sort((a, b) => b.compareTo(a));
+    if (!context.mounted) return;
+    final elegido = await showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Productos comprados'),
+        children: lista
+            .map((m) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, m),
+                  child: Text(DateFormat('MMMM yyyy', 'es_ES').format(m)),
+                ))
+            .toList(),
+      ),
+    );
+    if (elegido == null) return;
+    final productos = await widget.db.productos().first;
+    await InformeProductosService.generarPdf(
+        mes: elegido, compras: compras, productos: productos);
   }
 
   /// Elige un mes con compras y genera el PDF de cierre de mes.
