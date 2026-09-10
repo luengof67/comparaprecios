@@ -45,6 +45,19 @@ class ResumenProducto {
     return l;
   }
 
+  /// Igual que [ordenados], pero solo con los meses cuya clave este en
+  /// [claves]. Con [claves] vacio devuelve todos: es el estado "sin filtrar".
+  /// No hace falta que sean consecutivos.
+  List<MesProducto> ordenadosEn(Set<String> claves) {
+    if (claves.isEmpty) return ordenados;
+    final l = meses.entries
+        .where((e) => claves.contains(e.key))
+        .map((e) => e.value)
+        .toList()
+      ..sort((a, b) => b.mes.compareTo(a.mes));
+    return l;
+  }
+
   double get gastoTotal => meses.values.fold(0, (s, m) => s + m.gasto);
   double get cantidadTotal => meses.values.fold(0, (s, m) => s + m.cantidad);
 }
@@ -188,8 +201,22 @@ class InformeProductosService {
   static Future<void> generarHistoricoPdf({
     required List<ResumenProducto> productos,
     required String titulo,
+    Set<String> mesesElegidos = const {},
   }) async {
-    final totalGasto = productos.fold<double>(0, (s, r) => s + r.gastoTotal);
+    // Los totales salen de los meses elegidos, no del historico completo:
+    // si se esta comparando julio y septiembre, el total tiene que ser el de
+    // esos dos, no el de los tres meses que hubiera de por medio.
+    double totalDe(ResumenProducto r) => r
+        .ordenadosEn(mesesElegidos)
+        .fold<double>(0, (s, m) => s + m.gasto);
+    double cantidadDe(ResumenProducto r) => r
+        .ordenadosEn(mesesElegidos)
+        .fold<double>(0, (s, m) => s + m.cantidad);
+
+    final totalGasto = productos.fold<double>(0, (s, r) => s + totalDe(r));
+    final rango = mesesElegidos.isEmpty
+        ? ''
+        : ' · ${mesesElegidos.length} mes${mesesElegidos.length == 1 ? "" : "es"} elegidos';
 
     final doc = await FuentesPdf.documento();
     doc.addPage(
@@ -199,11 +226,12 @@ class InformeProductosService {
           final w = <pw.Widget>[
             _cabecera('Histórico de compras · $titulo',
                 '${productos.length} producto${productos.length == 1 ? "" : "s"} · '
-                    '${euros(totalGasto)} en total'),
+                    '${euros(totalGasto)} en total$rango'),
           ];
 
           for (final r in productos) {
-            final meses = r.ordenados;
+            final meses = r.ordenadosEn(mesesElegidos);
+            if (meses.isEmpty) continue;
             w.add(pw.SizedBox(height: 12));
             w.add(pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -212,7 +240,7 @@ class InformeProductosService {
                     style: pw.TextStyle(
                         fontSize: 13, fontWeight: pw.FontWeight.bold)),
                 pw.Text(
-                    '${_num(r.cantidadTotal)} ${r.unidad} · ${euros(r.gastoTotal)}',
+                    '${_num(cantidadDe(r))} ${r.unidad} · ${euros(totalDe(r))}',
                     style: pw.TextStyle(
                         fontSize: 11, fontWeight: pw.FontWeight.bold)),
               ],

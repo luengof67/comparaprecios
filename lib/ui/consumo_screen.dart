@@ -35,7 +35,6 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   DateTime? _mes;
 
   final _buscador = TextEditingController();
-  final _foco = FocusNode();
 
   /// Terminos de busqueda confirmados. Un producto entra si casa con
   /// cualquiera de ellos.
@@ -47,6 +46,11 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   String _categoria = '';
 
+  /// Meses elegidos para acotar el histórico. Vacío = se ven todos.
+  /// No hace falta que sean consecutivos: julio y septiembre sin agosto
+  /// es una selección tan válida como julio-agosto-septiembre seguidos.
+  final Set<String> _mesesElegidos = {};
+
   @override
   void initState() {
     super.initState();
@@ -56,7 +60,6 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   @override
   void dispose() {
     _buscador.dispose();
-    _foco.dispose();
     super.dispose();
   }
 
@@ -121,8 +124,13 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
   }
 
   List<ResumenProducto> get _filtrados {
+    // Se ordena por lo que se gasto en los meses elegidos, no por el total
+    // historico: si se comparan julio y septiembre, manda ese gasto y no el
+    // de todo el año.
+    double gasto(ResumenProducto r) =>
+        r.ordenadosEn(_mesesElegidos).fold<double>(0, (s, m) => s + m.gasto);
     final l = _resumenes.values.where(_pasaFiltros).toList()
-      ..sort((a, b) => b.gastoTotal.compareTo(a.gastoTotal));
+      ..sort((a, b) => gasto(b).compareTo(gasto(a)));
     return l;
   }
 
@@ -133,9 +141,6 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       _escribiendo = '';
       if (t.isNotEmpty && !_terminos.contains(t)) _terminos.add(t);
     });
-    // Enter le quita el foco al campo; sin esto hay que volver a pinchar
-    // para escribir el siguiente producto.
-    _foco.requestFocus();
   }
 
   List<String> get _categorias {
@@ -168,6 +173,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                   ? () => InformeProductosService.generarHistoricoPdf(
                         productos: _filtrados,
                         titulo: _tituloFiltro(),
+                        mesesElegidos: _mesesElegidos,
                       )
                   : () => InformeProductosService.generarPdf(
                         mes: _mes!,
@@ -218,7 +224,6 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                 flex: 3,
                 child: TextField(
                   controller: _buscador,
-                  focusNode: _foco,
                   decoration: InputDecoration(
                     hintText: _terminos.isEmpty
                         ? 'Buscar producto… (Enter para añadir otro)'
@@ -389,16 +394,22 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       );
     }
 
-    final total = hallados.fold<double>(0, (s, r) => s + r.gastoTotal);
+    // Los totales tambien respetan los meses elegidos: si se compara julio
+    // con septiembre, el total es el de esos dos, no el de todo el historico.
+    double totalDe(ResumenProducto r) =>
+        r.ordenadosEn(_mesesElegidos).fold<double>(0, (s, m) => s + m.gasto);
+    final total = hallados.fold<double>(0, (s, r) => s + totalDe(r));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 90),
       children: [
+        _chipsMeses(),
         Padding(
           padding: const EdgeInsets.only(bottom: 6, left: 2),
           child: Text(
             '${hallados.length} producto${hallados.length == 1 ? "" : "s"} · '
-            '${euros(total)} en total',
+            '${euros(total)} en total'
+            '${_mesesElegidos.isEmpty ? "" : " · ${_mesesElegidos.length} mes${_mesesElegidos.length == 1 ? "" : "es"} elegidos"}',
             style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ),
@@ -407,8 +418,57 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
     );
   }
 
+  /// Chips para elegir que meses entran en la comparacion. No hace falta que
+  /// sean consecutivos: julio y septiembre sin agosto es una eleccion tan
+  /// valida como tres meses seguidos. Vacio = se ven todos.
+  Widget _chipsMeses() {
+    if (_mesesDisponibles.length < 2) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final m in _mesesDisponibles)
+            FilterChip(
+              label: Text(_mesCorto(m)),
+              selected: _mesesElegidos.contains(ResumenProducto.claveMes(m)),
+              onSelected: (v) => setState(() {
+                final k = ResumenProducto.claveMes(m);
+                if (v) {
+                  _mesesElegidos.add(k);
+                } else {
+                  _mesesElegidos.remove(k);
+                }
+              }),
+              visualDensity: VisualDensity.compact,
+            ),
+          if (_mesesElegidos.isNotEmpty)
+            ActionChip(
+              label: const Text('Ver todos'),
+              onPressed: () => setState(_mesesElegidos.clear),
+              visualDensity: VisualDensity.compact,
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _tarjetaProducto(ResumenProducto r) {
-    final meses = r.ordenados;
+    final meses = r.ordenadosEn(_mesesElegidos);
+    if (meses.isEmpty) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Text(
+            '${r.nombre} · sin compras en los meses elegidos',
+            style: const TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ),
+      );
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -421,8 +481,10 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 15)),
             Text(
-              '${r.categoria} · ${_num(r.cantidadTotal)} ${r.unidad} · '
-              '${euros(r.gastoTotal)} en ${meses.length} mes${meses.length == 1 ? "" : "es"}',
+              '${r.categoria} · '
+              '${_num(meses.fold<double>(0, (s, m) => s + m.cantidad))} ${r.unidad} · '
+              '${euros(meses.fold<double>(0, (s, m) => s + m.gasto))} '
+              'en ${meses.length} mes${meses.length == 1 ? "" : "es"}',
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 10),
