@@ -23,6 +23,7 @@ dependencies:
   share_plus: ^10.1.2
   path_provider: ^2.1.5
   cupertino_icons: ^1.0.8
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_lints: ^4.0.0

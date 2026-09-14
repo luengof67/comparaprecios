@@ -44,8 +44,15 @@ class ComparaPreciosApp extends StatelessWidget {
 }
 
 /// Decide qué mostrar según haya sesión o no:
-/// - sin sesión → pantalla de login
+/// - sin sesión → intenta reconectar sola con lo guardado; si no hay nada
+///   guardado o falla, pantalla de login
 /// - con sesión → la app
+///
+/// El intento de reconexión existe por un fallo conocido y sin arreglo
+/// oficial de firebase_auth en Android (mas frecuente en algunos Xiaomi):
+/// la sesión guardada por Firebase se pierde sola al cerrar la app, aunque el
+/// login anterior fuera correcto. La app no puede evitar que Firebase
+/// "olvide", pero sí puede volver a entrar sin pedirlo cada vez.
 class _Portero extends StatelessWidget {
   const _Portero();
 
@@ -59,9 +66,61 @@ class _Portero extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()));
         }
         if (snap.hasData) return const RaizScreen();
-        return const LoginScreen();
+        return const _ReconectorAutomatico();
       },
     );
+  }
+}
+
+/// Antes de enseñar el formulario de login, prueba una vez con las
+/// credenciales guardadas. Si no hay nada guardado, o si el reintento falla
+/// (contraseña cambiada desde otro sitio, cuenta borrada, etc.), se borra lo
+/// guardado y se cae al login normal sin quedarse reintentando en bucle.
+class _ReconectorAutomatico extends StatefulWidget {
+  const _ReconectorAutomatico();
+
+  @override
+  State<_ReconectorAutomatico> createState() => _ReconectorAutomaticoState();
+}
+
+class _ReconectorAutomaticoState extends State<_ReconectorAutomatico> {
+  bool _probando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _intentar();
+  }
+
+  Future<void> _intentar() async {
+    final creds = await CredencialesGuardadas.leer();
+    if (creds == null) {
+      if (mounted) setState(() => _probando = false);
+      return;
+    }
+    final (email, password) = creds;
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      // Si funciona, el StreamBuilder de arriba detecta la sesión y este
+      // widget deja de construirse: no hace falta hacer nada más aquí.
+    } catch (_) {
+      // Credenciales caducadas o inválidas: se borran para no reintentar
+      // en bucle en cada arranque con una contraseña que ya no vale.
+      await CredencialesGuardadas.borrar();
+      if (mounted) setState(() => _probando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_probando) {
+      return const Scaffold(
+          body: Center(child: CircularProgressIndicator()));
+    }
+    return const LoginScreen();
   }
 }
 
@@ -138,7 +197,11 @@ class _RaizScreenState extends State<RaizScreen> {
                       builder: (_) => MantenimientoScreen(db: _db)),
                 );
               } else if (v == 'salir') {
-                FirebaseAuth.instance.signOut();
+                // Cerrar sesion a proposito SI borra lo guardado: si no, el
+                // reconector automatico volveria a entrar solo un instante
+                // despues, y "cerrar sesion" dejaria de servir para nada.
+                await CredencialesGuardadas.borrar();
+                await FirebaseAuth.instance.signOut();
               }
             },
             itemBuilder: (_) => [
