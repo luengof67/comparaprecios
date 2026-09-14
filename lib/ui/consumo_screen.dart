@@ -3,9 +3,22 @@ import 'package:intl/intl.dart';
 
 import '../models/compra.dart';
 import '../models/producto.dart';
+import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
+import '../services/historial_compras_service.dart';
 import '../services/informe_productos_service.dart';
 import 'formato.dart';
+
+/// Como se ve el histórico de los productos buscados.
+enum _Vista {
+  /// Un número por mes: cantidad, precio medio y gasto.
+  resumen,
+
+  /// Cada compra individual, con fecha exacta y la variación frente a la
+  /// compra anterior de ese producto, sea quien sea quien lo sirviera. Es lo
+  /// que hace falta para pillar una subida puntual dentro de un mismo mes.
+  detalle,
+}
 
 /// Que se ha comprado, cuanto y por cuanto.
 ///
@@ -29,7 +42,10 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   List<Compra> _compras = const [];
   List<Producto> _productos = const [];
+  List<Proveedor> _proveedores = const [];
   Map<String, ResumenProducto> _resumenes = const {};
+
+  _Vista _vista = _Vista.resumen;
 
   List<DateTime> _mesesDisponibles = const [];
   DateTime? _mes;
@@ -71,6 +87,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
     try {
       final compras = await widget.db.compras().first;
       final productos = await widget.db.productos().first;
+      final proveedores = await widget.db.proveedores().first;
       if (!mounted) return;
 
       final meses = <String, DateTime>{};
@@ -83,6 +100,7 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       setState(() {
         _compras = compras;
         _productos = productos;
+        _proveedores = proveedores;
         _mesesDisponibles = lista;
         _mes ??= lista.isEmpty ? null : lista.first;
         _resumenes = InformeProductosService.agrupar(compras, productos);
@@ -160,6 +178,20 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   String _mesCorto(DateTime m) => DateFormat('MMM yyyy', 'es_ES').format(m);
 
+  /// El histórico compra a compra de los productos que han pasado el
+  /// filtro, mezclando todos los proveedores por fecha. Reutiliza los
+  /// productos ya filtrados (_filtrados) para no duplicar la lógica de
+  /// búsqueda por nombre y alias.
+  List<HistoricoProducto> get _historicoDetallado {
+    final claves = _filtrados.map((r) => r.clave).toSet();
+    return HistorialComprasService.deProductos(
+      claves: claves,
+      compras: _compras,
+      productos: _productos,
+      proveedores: _proveedores,
+    );
+  }
+
   // ------------------------------------------------------------------ build
 
   @override
@@ -169,17 +201,23 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
       floatingActionButton: _cargando || _mes == null
           ? null
           : FloatingActionButton.extended(
-              onPressed: _hayFiltro
-                  ? () => InformeProductosService.generarHistoricoPdf(
-                        productos: _filtrados,
-                        titulo: _tituloFiltro(),
-                        mesesElegidos: _mesesElegidos,
-                      )
-                  : () => InformeProductosService.generarPdf(
+              onPressed: !_hayFiltro
+                  ? () => InformeProductosService.generarPdf(
                         mes: _mes!,
                         compras: _compras,
                         productos: _productos,
-                      ),
+                      )
+                  : _vista == _Vista.resumen
+                      ? () => InformeProductosService.generarHistoricoPdf(
+                            productos: _filtrados,
+                            titulo: _tituloFiltro(),
+                            mesesElegidos: _mesesElegidos,
+                          )
+                      : () => HistorialComprasService.generarPdf(
+                            titulo: _tituloFiltro(),
+                            historicos: _historicoDetallado,
+                            mostrarProveedor: true,
+                          ),
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('PDF'),
             ),
@@ -208,7 +246,13 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
     return Column(
       children: [
         _filtros(),
-        Expanded(child: _hayFiltro ? _historico() : _listaDelMes()),
+        Expanded(
+          child: !_hayFiltro
+              ? _listaDelMes()
+              : _vista == _Vista.resumen
+                  ? _historico()
+                  : _historicoDetalladoWidget(),
+        ),
       ],
     );
   }
@@ -288,6 +332,19 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
                     ),
                 ],
               ),
+            ),
+          ],
+          if (_hayFiltro) ...[
+            const SizedBox(height: 8),
+            SegmentedButton<_Vista>(
+              segments: const [
+                ButtonSegment(
+                    value: _Vista.resumen, label: Text('Resumen mensual')),
+                ButtonSegment(
+                    value: _Vista.detalle, label: Text('Cada compra')),
+              ],
+              selected: {_vista},
+              onSelectionChanged: (s) => setState(() => _vista = s.first),
             ),
           ],
         ],
@@ -563,4 +620,125 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
   static String _num(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  // -------------------------------------------- historico compra a compra
+
+  /// Cada compra individual de los productos buscados, mezclando todos los
+  /// proveedores por fecha. Es lo que hace falta para pillar una subida el
+  /// 18 de agosto aunque el 10 de agosto ya hubiera otra compra ese mismo
+  /// mes: el resumen mensual la fundiría en una media y la escondería.
+  Widget _historicoDetalladoWidget() {
+    final historicos = _historicoDetallado;
+
+    if (historicos.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text('Ningún producto comprado con esa búsqueda.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey)),
+        ),
+      );
+    }
+
+    final gastoTotal = historicos.fold<double>(0, (s, h) => s + h.gastoTotal);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 90),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 2),
+          child: Text(
+            '${historicos.length} producto${historicos.length == 1 ? "" : "s"} · '
+            '${euros(gastoTotal)} en total',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        for (final h in historicos) _tarjetaHistorico(h),
+      ],
+    );
+  }
+
+  Widget _tarjetaHistorico(HistoricoProducto h) {
+    final u = h.producto.unidadBase.etiqueta;
+    final vt = h.variacionTotal;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ExpansionTile(
+        initiallyExpanded: h.tieneAlgunaSubida,
+        title: Text(h.producto.nombre,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          '${h.compras.length} compra${h.compras.length == 1 ? "" : "s"} · '
+          '${euros(h.gastoTotal)}'
+          '${h.variosProveedores ? " · varios proveedores" : ""}',
+          style: const TextStyle(fontSize: 12),
+        ),
+        trailing: vt == null
+            ? null
+            : Text(
+                '${vt > 0 ? "+" : ""}${(vt * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: vt > 0.005
+                      ? Colors.red.shade700
+                      : vt < -0.005
+                          ? Colors.green.shade700
+                          : Colors.grey,
+                ),
+              ),
+        children: [
+          for (final c in h.compras)
+            _filaCompraDetallada(c, u, h.producto.unidadBase.nombre),
+        ],
+      ),
+    );
+  }
+
+  Widget _filaCompraDetallada(
+      CompraDeProducto c, String u, String unidadCantidad) {
+    Color? color;
+    IconData? icono;
+    if (c.sube) {
+      color = Colors.red.shade700;
+      icono = Icons.arrow_upward;
+    } else if (c.baja) {
+      color = Colors.green.shade700;
+      icono = Icons.arrow_downward;
+    }
+
+    return ListTile(
+      dense: true,
+      leading: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: Color(c.proveedorColor),
+          shape: BoxShape.circle,
+        ),
+      ),
+      title: Text(fecha(c.fecha), style: const TextStyle(fontSize: 13)),
+      subtitle: Text(
+        c.numeroAlbaran != null
+            ? '${c.proveedorNombre} · nº ${c.numeroAlbaran} · ${_num(c.cantidad)} $unidadCantidad'
+            : '${c.proveedorNombre} · a mano · ${_num(c.cantidad)} $unidadCantidad',
+        style: const TextStyle(fontSize: 11),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icono != null) ...[
+            Icon(icono, size: 14, color: color),
+            const SizedBox(width: 2),
+            Text('${(c.variacion!.abs() * 100).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 12, color: color)),
+            const SizedBox(width: 8),
+          ],
+          Text('${c.precioUnitario.toStringAsFixed(2)} $u',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
 }

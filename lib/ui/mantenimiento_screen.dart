@@ -12,6 +12,7 @@ import 'factores_screen.dart';
 import 'revisar_lineas_screen.dart';
 import 'dudosas_screen.dart';
 import 'mover_datos_screen.dart';
+import 'historial_proveedor_screen.dart';
 
 /// Herramientas de mantenimiento de la base de datos.
 ///
@@ -379,6 +380,43 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => MoverDatosScreen(db: widget.db)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.trending_up),
+                      const SizedBox(width: 8),
+                      Text('Historial por proveedor',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Todo lo comprado a un proveedor, compra a compra, con '
+                    'la subida o bajada frente a la anterior. Para llevarlo '
+                    'impreso y preguntar por una subida concreta.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Ver historial'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              HistorialProveedorScreen(db: widget.db)),
                     ),
                   ),
                 ],
