@@ -32,6 +32,14 @@ class CompraDeProducto {
   /// null en la primera compra registrada: no hay con que comparar.
   final double? variacion;
 
+  /// La compra de origen y la posicion de esta linea dentro de ella. Hace
+  /// falta para poder editar o quitar la linea desde donde se esta mirando,
+  /// en vez de obligar a ir a otra pantalla a corregir un dato que se acaba
+  /// de detectar aqui mismo.
+  final Compra compraOrigen;
+  final int indiceEnCompra;
+  final String productoId;
+
   const CompraDeProducto({
     required this.fecha,
     required this.cantidad,
@@ -40,6 +48,9 @@ class CompraDeProducto {
     required this.proveedorNombre,
     required this.proveedorColor,
     required this.variacion,
+    required this.compraOrigen,
+    required this.indiceEnCompra,
+    required this.productoId,
   });
 
   bool get sube => variacion != null && variacion! > 0.005;
@@ -88,24 +99,29 @@ class HistorialComprasService {
   /// (mismo producto), calculando la variacion de cada una frente a la
   /// anterior. Comun a los dos modos de abajo.
   static HistoricoProducto _secuencia(
+    String productoClave,
     Producto producto,
-    List<(DateTime, LineaCompra, String?, String, int)> lineas,
+    List<(Compra, int, String?, String, int)> lineas,
   ) {
-    lineas.sort((a, b) => a.$1.compareTo(b.$1));
+    lineas.sort((a, b) => a.$1.fecha.compareTo(b.$1.fecha));
     final compras = <CompraDeProducto>[];
     double? anterior;
-    for (final (fecha, linea, numero, provNombre, provColor) in lineas) {
+    for (final (compra, indice, numero, provNombre, provColor) in lineas) {
+      final linea = compra.lineas[indice];
       final variacion = anterior == null || anterior <= 0
           ? null
           : (linea.precioUnitario - anterior) / anterior;
       compras.add(CompraDeProducto(
-        fecha: fecha,
+        fecha: compra.fecha,
         cantidad: linea.cantidad,
         precioUnitario: linea.precioUnitario,
         numeroAlbaran: numero,
         proveedorNombre: provNombre,
         proveedorColor: provColor,
         variacion: variacion,
+        compraOrigen: compra,
+        indiceEnCompra: indice,
+        productoId: productoClave,
       ));
       anterior = linea.precioUnitario;
     }
@@ -121,25 +137,26 @@ class HistorialComprasService {
   }) {
     final prodPorId = {for (final p in productos) p.id: p};
 
-    final porProducto =
-        <String, List<(DateTime, LineaCompra, String?, String, int)>>{};
+    final porProducto = <String, List<(Compra, int, String?, String, int)>>{};
     for (final c in compras) {
       if (c.proveedorId != proveedor.id) continue;
       final numero = _numeroAlbaran(c);
-      for (final l in c.lineas) {
+      for (var i = 0; i < c.lineas.length; i++) {
+        final l = c.lineas[i];
         if (l.precioUnitario <= 0) continue;
         final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
         porProducto
             .putIfAbsent(clave, () => [])
-            .add((c.fecha, l, numero, proveedor.nombre, proveedor.color));
+            .add((c, i, numero, proveedor.nombre, proveedor.color));
       }
     }
 
     final salida = <HistoricoProducto>[];
     for (final entry in porProducto.entries) {
+      final primeraLinea = entry.value.first.$1.lineas[entry.value.first.$2];
       final producto = prodPorId[entry.key] ??
-          Producto(id: entry.key, nombre: entry.value.first.$2.productoNombre);
-      salida.add(_secuencia(producto, entry.value));
+          Producto(id: entry.key, nombre: primeraLinea.productoNombre);
+      salida.add(_secuencia(entry.key, producto, entry.value));
     }
     return _ordenar(salida);
   }
@@ -158,29 +175,30 @@ class HistorialComprasService {
     final prodPorId = {for (final p in productos) p.id: p};
     final provPorId = {for (final p in proveedores) p.id: p};
 
-    final porProducto =
-        <String, List<(DateTime, LineaCompra, String?, String, int)>>{};
+    final porProducto = <String, List<(Compra, int, String?, String, int)>>{};
     for (final c in compras) {
       final numero = _numeroAlbaran(c);
       final prov = provPorId[c.proveedorId];
       final provNombre = prov?.nombre ??
           (c.proveedorNombre.isEmpty ? 'Sin proveedor' : c.proveedorNombre);
       final provColor = prov?.color ?? 0xFF9E9E9E;
-      for (final l in c.lineas) {
+      for (var i = 0; i < c.lineas.length; i++) {
+        final l = c.lineas[i];
         if (l.precioUnitario <= 0) continue;
         final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
         if (!claves.contains(clave)) continue;
         porProducto
             .putIfAbsent(clave, () => [])
-            .add((c.fecha, l, numero, provNombre, provColor));
+            .add((c, i, numero, provNombre, provColor));
       }
     }
 
     final salida = <HistoricoProducto>[];
     for (final entry in porProducto.entries) {
+      final primeraLinea = entry.value.first.$1.lineas[entry.value.first.$2];
       final producto = prodPorId[entry.key] ??
-          Producto(id: entry.key, nombre: entry.value.first.$2.productoNombre);
-      salida.add(_secuencia(producto, entry.value));
+          Producto(id: entry.key, nombre: primeraLinea.productoNombre);
+      salida.add(_secuencia(entry.key, producto, entry.value));
     }
     return _ordenar(salida);
   }
@@ -244,9 +262,6 @@ class HistorialComprasService {
           }
 
           for (final h in lista) {
-            // etiqueta ya viene como "€/kg", "€/L" o "€/ud": es la cabecera
-            // de la columna de precio tal cual. nombre es solo la unidad
-            // ("kg", "L", "ud"), para pegarla a la cantidad.
             final unidadPrecio = h.producto.unidadBase.etiqueta;
             final unidadCantidad = h.producto.unidadBase.nombre;
 

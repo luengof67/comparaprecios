@@ -7,6 +7,7 @@ import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
 import '../services/historial_compras_service.dart';
 import '../services/informe_productos_service.dart';
+import 'corregir_compra_dialog.dart';
 import 'formato.dart';
 
 /// Como se ve el histórico de los productos buscados.
@@ -710,6 +711,13 @@ class _ConsumoScreenState extends State<ConsumoScreen> {
 
     return ListTile(
       dense: true,
+      onTap: () => CorregirCompraDialog.mostrar(
+        context,
+        widget.db,
+        c,
+        unidadCantidad,
+        onListo: _cargar,
+      ),
       leading: Container(
         width: 10,
         height: 10,

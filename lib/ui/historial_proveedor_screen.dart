@@ -5,6 +5,7 @@ import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../services/firestore_service.dart';
 import '../services/historial_compras_service.dart';
+import 'corregir_compra_dialog.dart';
 import 'formato.dart';
 
 /// Todo lo comprado a un proveedor, producto a producto y compra a compra,
@@ -252,6 +253,13 @@ class _HistorialProveedorScreenState extends State<HistorialProveedorScreen> {
 
     return ListTile(
       dense: true,
+      onTap: () => CorregirCompraDialog.mostrar(
+        context,
+        widget.db,
+        c,
+        unidadCantidad,
+        onListo: _cargar,
+      ),
       leading: Icon(
         c.numeroAlbaran != null ? Icons.receipt_long : Icons.edit_note,
         size: 18,
