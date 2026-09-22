@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/firestore_service.dart';
 import 'categorias.dart';
+import 'reorganizar_categorias_screen.dart';
 
 /// Gestion de las categorias de producto: la lista vive en Firestore, asi que
 /// se puede ampliar sin tocar el codigo. La primera vez que se abre, si la
@@ -88,7 +89,20 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Categorías')),
+      appBar: AppBar(
+        title: const Text('Categorías'),
+        actions: [
+          IconButton(
+            tooltip: 'Reorganizar productos entre categorías',
+            icon: const Icon(Icons.drive_file_move_outline),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ReorganizarCategoriasScreen(db: widget.db)),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _agregar,
         icon: const Icon(Icons.add),

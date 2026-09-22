@@ -263,6 +263,28 @@ class FirestoreService {
 
   Future<void> borrarProducto(String id) => _productos.doc(id).delete();
 
+  /// Mueve muchos productos a otra categoria de golpe.
+  ///
+  /// Pensado para cuando una categoria vieja se reparte entre varias nuevas
+  /// (por ejemplo "Congelados" entre "Carne congelada" y "Verdura
+  /// congelada"): se eligen los productos con casillas y se mandan todos a
+  /// la que toque en una sola operacion, en vez de abrir ficha por ficha.
+  Future<int> moverProductosACategoria(
+      List<String> productoIds, String categoria) async {
+    var hechos = 0;
+    for (var i = 0; i < productoIds.length; i += 400) {
+      final fin =
+          (i + 400) < productoIds.length ? i + 400 : productoIds.length;
+      final batch = _db.batch();
+      for (final id in productoIds.sublist(i, fin)) {
+        batch.update(_productos.doc(id), {'categoria': categoria});
+      }
+      await batch.commit();
+      hechos += fin - i;
+    }
+    return hechos;
+  }
+
   /// Aprende un alias nuevo para un producto, o CORRIGE el que ya hubiera con
   /// el mismo texto y proveedor.
   ///
