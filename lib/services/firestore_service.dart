@@ -16,6 +16,7 @@ class FirestoreService {
   CollectionReference get _proveedores => _db.collection('proveedores');
   CollectionReference get _productos => _db.collection('productos');
   CollectionReference get _precios => _db.collection('precios');
+  CollectionReference get _categorias => _db.collection('categorias');
 
   // ---- PROVEEDORES ----
   Stream<List<Proveedor>> proveedores() => _proveedores
@@ -556,4 +557,75 @@ class FirestoreService {
           .toMap());
 
   Future<void> borrarPlantilla(String id) => _plantillas.doc(id).delete();
+
+  // ---- CATEGORIAS ----
+  // Antes eran una lista fija en el codigo (categorias.dart). Ahora viven
+  // aqui para poder ampliarlas sin recompilar: el usuario las añade desde la
+  // app, tanto en su propia pantalla de gestion como al dar de alta un
+  // producto.
+
+  /// Ordenadas por el campo "orden" (el orden en que se sembraron o se
+  /// fueron añadiendo), no alfabeticamente: asi el usuario puede mantener el
+  /// orden con el que organiza su cocina.
+  Stream<List<String>> categorias() => _categorias
+      .orderBy('orden')
+      .snapshots()
+      .map((s) => s.docs
+          .map((d) => ((d.data() as Map<String, dynamic>)['nombre'] ?? '')
+              .toString())
+          .where((n) => n.isNotEmpty)
+          .toList());
+
+  /// Añade una categoria si no existe ya (comparando sin mayusculas ni
+  /// acentos, con Proveedor.norm, que sirve igual de bien aqui). Se coloca al
+  /// final de la lista.
+  Future<void> agregarCategoria(String nombre) async {
+    final t = nombre.trim();
+    if (t.isEmpty) return;
+
+    final actuales = await _categorias.get();
+    final buscado = Proveedor.norm(t);
+    final yaExiste = actuales.docs.any((d) =>
+        Proveedor.norm(((d.data() as Map<String, dynamic>)['nombre'] ?? '')
+            .toString()) ==
+        buscado);
+    if (yaExiste) return;
+
+    var maxOrden = -1;
+    for (final d in actuales.docs) {
+      final o = ((d.data() as Map<String, dynamic>)['orden'] ?? -1) as int;
+      if (o > maxOrden) maxOrden = o;
+    }
+
+    await _categorias.add({'nombre': t, 'orden': maxOrden + 1});
+  }
+
+  /// Siembra las categorias iniciales SOLO si la coleccion esta vacia de
+  /// verdad. Idempotente: se puede llamar cada vez que se abre la pantalla
+  /// de categorias sin miedo a duplicar nada.
+  Future<void> sembrarCategoriasSiVacio(List<String> porDefecto) async {
+    final actuales = await _categorias.limit(1).get();
+    if (actuales.docs.isNotEmpty) return;
+
+    final batch = _db.batch();
+    for (var i = 0; i < porDefecto.length; i++) {
+      batch.set(_categorias.doc(), {'nombre': porDefecto[i], 'orden': i});
+    }
+    await batch.commit();
+  }
+
+  /// Borra una categoria, pero solo si ningun producto la tiene puesta.
+  /// Devuelve false (y no borra nada) si esta en uso, para que la pantalla
+  /// pueda avisar en vez de dejar productos con una categoria fantasma.
+  Future<bool> borrarCategoria(String nombre) async {
+    final enUso =
+        await _productos.where('categoria', isEqualTo: nombre).limit(1).get();
+    if (enUso.docs.isNotEmpty) return false;
+
+    final doc = await _categorias.where('nombre', isEqualTo: nombre).get();
+    for (final d in doc.docs) {
+      await d.reference.delete();
+    }
+    return true;
+  }
 }

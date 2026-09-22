@@ -259,6 +259,40 @@ class _ProductoFormState extends State<_ProductoForm> {
     }
   }
 
+  /// Añade una categoría nueva sin salir del formulario: se escribe en
+  /// Firestore y se selecciona en el acto. Es lo que hace falta para poder
+  /// clasificar un producto en el momento de darlo de alta, aunque la
+  /// categoría que le toque todavía no exista en la lista.
+  Future<void> _nuevaCategoria(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nueva categoría'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+              labelText: 'Nombre', border: OutlineInputBorder()),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Añadir'),
+          ),
+        ],
+      ),
+    );
+    if (nombre == null || nombre.isEmpty) return;
+    await widget.db.agregarCategoria(nombre);
+    if (mounted) setState(() => _categoria = nombre);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -278,145 +312,186 @@ class _ProductoFormState extends State<_ProductoForm> {
             const SizedBox(height: 16),
             TextField(
               controller: _nombre,
-            decoration: const InputDecoration(
-                labelText: 'Nombre', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _categoria,
-            decoration: const InputDecoration(
-                labelText: 'Categoría', border: OutlineInputBorder()),
-            items: categorias
-                .map((c) => DropdownMenuItem(
-                      value: c,
-                      child: Row(
-                        children: [
-                          Icon(iconoCategoria(c),
-                              size: 20, color: colorCategoria(c)),
-                          const SizedBox(width: 10),
-                          Text(c),
-                        ],
-                      ),
-                    ))
-                .toList(),
-            onChanged: (v) => setState(() => _categoria = v ?? 'General'),
-          ),
-          const SizedBox(height: 12),
-          const Text('Comparar precio por:'),
-          const SizedBox(height: 4),
-          SegmentedButton<UnidadBase>(
-            segments: const [
-              ButtonSegment(value: UnidadBase.kg, label: Text('€/kg')),
-              ButtonSegment(value: UnidadBase.litro, label: Text('€/L')),
-              ButtonSegment(value: UnidadBase.unidad, label: Text('€/ud')),
-            ],
-            selected: {_unidad},
-            onSelectionChanged: (s) => setState(() => _unidad = s.first),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _cantidad,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Cantidad que sueles comprar (${_unidad.nombre})',
-              helperText: 'Opcional. Sirve para calcular el coste y ahorro reales.',
-              border: const OutlineInputBorder(),
+              decoration: const InputDecoration(
+                  labelText: 'Nombre', border: OutlineInputBorder()),
             ),
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<List<Proveedor>>(
-            stream: widget.db.proveedores(),
-            builder: (context, snap) {
-              final provs = snap.data ?? [];
-              return DropdownButtonFormField<String>(
-                initialValue: _proveedorAsignado.isEmpty ? null : _proveedorAsignado,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Proveedor para la hoja (si no tiene precio)',
-                  helperText:
-                      'Opcional. Solo se usa para colocarlo en la hoja de pedido '
-                      'mientras no tenga precio registrado.',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Sin asignar')),
-                  ...provs.map((p) =>
-                      DropdownMenuItem(value: p.id, child: Text(p.nombre))),
-                ],
-                onChanged: (v) => setState(() => _proveedorAsignado = v ?? ''),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          const Divider(),
-          Row(
-            children: [
-              const Icon(Icons.sell_outlined, size: 18),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text('Nombres alternativos (alias)',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Añadir'),
-                onPressed: _agregarAlias,
-              ),
-            ],
-          ),
-          const Text(
-            'Cómo llaman los proveedores a este producto. Se usan para reconocer '
-            'las líneas al escanear albaranes.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          if (_alias.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('Sin alias todavía.',
-                  style: TextStyle(color: Colors.grey)),
-            )
-          else
-            StreamBuilder<List<Proveedor>>(
-              stream: widget.db.proveedores(),
+            const SizedBox(height: 12),
+            // La categoría vive en Firestore, no en una lista fija del
+            // código: se puede ampliar sin recompilar. El "+" de al lado
+            // añade una nueva sin salir de este formulario.
+            StreamBuilder<List<String>>(
+              stream: widget.db.categorias(),
               builder: (context, snap) {
-                final provs = {for (final p in (snap.data ?? [])) p.id: p.nombre};
-                return Column(
-                  children: _alias.asMap().entries.map((e) {
-                    final i = e.key;
-                    final a = e.value;
-                    final prov = a.proveedorId != null
-                        ? (provs[a.proveedorId] ?? 'proveedor')
-                        : 'todos';
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(a.texto),
-                      subtitle: Text(prov,
-                          style: const TextStyle(fontSize: 12)),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => setState(() => _alias.removeAt(i)),
+                final cargadas = snap.data ?? const <String>[];
+                // La categoría actual siempre tiene que estar entre las
+                // opciones: si el producto trae una que ya no existe en la
+                // lista maestra, o si esta aún no ha terminado de cargar, el
+                // desplegable no puede quedarse sin su propio valor
+                // seleccionado o Flutter lo rechaza.
+                final disponibles = [
+                  ...cargadas,
+                  if (!cargadas.contains(_categoria)) _categoria,
+                ];
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _categoria,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                            labelText: 'Categoría',
+                            border: OutlineInputBorder()),
+                        items: disponibles
+                            .map((c) => DropdownMenuItem(
+                                  value: c,
+                                  child: Row(
+                                    children: [
+                                      Icon(iconoCategoria(c),
+                                          size: 20, color: colorCategoria(c)),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(c,
+                                            overflow: TextOverflow.ellipsis),
+                                      ),
+                                    ],
+                                  ),
+                                ))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _categoria = v ?? 'General'),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: IconButton.filledTonal(
+                        tooltip: 'Nueva categoría',
+                        icon: const Icon(Icons.add),
+                        onPressed: () => _nuevaCategoria(context),
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              if (widget.existente != null)
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  label: const Text('Borrar', style: TextStyle(color: Colors.red)),
-                  onPressed: _confirmarBorrado,
+            const SizedBox(height: 12),
+            const Text('Comparar precio por:'),
+            const SizedBox(height: 4),
+            SegmentedButton<UnidadBase>(
+              segments: const [
+                ButtonSegment(value: UnidadBase.kg, label: Text('€/kg')),
+                ButtonSegment(value: UnidadBase.litro, label: Text('€/L')),
+                ButtonSegment(value: UnidadBase.unidad, label: Text('€/ud')),
+              ],
+              selected: {_unidad},
+              onSelectionChanged: (s) => setState(() => _unidad = s.first),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _cantidad,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Cantidad que sueles comprar (${_unidad.nombre})',
+                helperText: 'Opcional. Sirve para calcular el coste y ahorro reales.',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<List<Proveedor>>(
+              stream: widget.db.proveedores(),
+              builder: (context, snap) {
+                final provs = snap.data ?? [];
+                return DropdownButtonFormField<String>(
+                  initialValue:
+                      _proveedorAsignado.isEmpty ? null : _proveedorAsignado,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Proveedor para la hoja (si no tiene precio)',
+                    helperText:
+                        'Opcional. Solo se usa para colocarlo en la hoja de pedido '
+                        'mientras no tenga precio registrado.',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Sin asignar')),
+                    ...provs.map((p) =>
+                        DropdownMenuItem(value: p.id, child: Text(p.nombre))),
+                  ],
+                  onChanged: (v) => setState(() => _proveedorAsignado = v ?? ''),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            Row(
+              children: [
+                const Icon(Icons.sell_outlined, size: 18),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text('Nombres alternativos (alias)',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
-              const Spacer(),
-              FilledButton(onPressed: _guardar, child: const Text('Guardar')),
-            ],
-          ),
-        ],
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Añadir'),
+                  onPressed: _agregarAlias,
+                ),
+              ],
+            ),
+            const Text(
+              'Cómo llaman los proveedores a este producto. Se usan para reconocer '
+              'las líneas al escanear albaranes.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            if (_alias.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text('Sin alias todavía.',
+                    style: TextStyle(color: Colors.grey)),
+              )
+            else
+              StreamBuilder<List<Proveedor>>(
+                stream: widget.db.proveedores(),
+                builder: (context, snap) {
+                  final provs = {for (final p in (snap.data ?? [])) p.id: p.nombre};
+                  return Column(
+                    children: _alias.asMap().entries.map((e) {
+                      final i = e.key;
+                      final a = e.value;
+                      final prov = a.proveedorId != null
+                          ? (provs[a.proveedorId] ?? 'proveedor')
+                          : 'todos';
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(a.texto),
+                        subtitle: Text(prov,
+                            style: const TextStyle(fontSize: 12)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _alias.removeAt(i)),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (widget.existente != null)
+                  TextButton.icon(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text('Borrar', style: TextStyle(color: Colors.red)),
+                    onPressed: _confirmarBorrado,
+                  ),
+                const Spacer(),
+                FilledButton(onPressed: _guardar, child: const Text('Guardar')),
+              ],
+            ),
+          ],
         ),
       ),
     );
