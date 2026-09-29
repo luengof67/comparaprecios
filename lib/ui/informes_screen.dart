@@ -28,6 +28,60 @@ class InformesScreen extends StatefulWidget {
 class _InformesScreenState extends State<InformesScreen> {
   AgrupacionInforme _agrupacion = AgrupacionInforme.mes;
 
+  /// Seccion (categoria de producto) por la que se filtra el informe.
+  /// Cadena vacia = todas las secciones.
+  String _seccion = '';
+
+  /// Categoria de cada producto (productoId -> categoria). Un producto sin
+  /// categoria cuenta como "General", igual que en el resto de la app.
+  static Map<String, String> _categoriaPorProducto(List<Producto> productos) =>
+      {
+        for (final p in productos)
+          p.id: p.categoria.trim().isEmpty ? 'General' : p.categoria.trim()
+      };
+
+  /// Secciones que aparecen de verdad en las compras, ordenadas.
+  /// Asi el desplegable no ofrece secciones de las que no se ha comprado nada.
+  static List<String> _seccionesConCompras(
+      List<Compra> compras, Map<String, String> catDe) {
+    final s = <String>{};
+    for (final c in compras) {
+      for (final l in c.lineas) {
+        final cat = catDe[l.productoId];
+        if (cat != null) s.add(cat);
+      }
+    }
+    return s.toList()..sort();
+  }
+
+  /// Deja en cada compra solo las lineas de la seccion elegida, y quita las
+  /// compras que se quedan sin lineas. Si un albaran trae carne y latas y se
+  /// filtra por carne, solo cuenta la carne. Con la seccion vacia devuelve
+  /// las compras tal cual.
+  ///
+  /// El filtro va aqui, en la pantalla, ANTES de pasar los datos al calculo
+  /// y al PDF: los servicios trabajan con lo que les llega.
+  List<Compra> _filtrarPorSeccion(
+      List<Compra> compras, Map<String, String> catDe) {
+    if (_seccion.isEmpty) return compras;
+    final res = <Compra>[];
+    for (final c in compras) {
+      final lineas =
+          c.lineas.where((l) => catDe[l.productoId] == _seccion).toList();
+      if (lineas.isEmpty) continue;
+      res.add(Compra(
+        id: c.id,
+        proveedorId: c.proveedorId,
+        proveedorNombre: c.proveedorNombre,
+        fecha: c.fecha,
+        lineas: lineas,
+        evento: c.evento,
+        origenClave: c.origenClave,
+      ));
+    }
+    return res;
+  }
+
   String _etiquetaAgrupacion() => switch (_agrupacion) {
         AgrupacionInforme.mes => 'Por mes',
         AgrupacionInforme.semana => 'Por semana',
@@ -107,10 +161,20 @@ class _InformesScreenState extends State<InformesScreen> {
                         );
                       }
 
+                      final catDe = _categoriaPorProducto(snapProd.data!);
+                      final secciones = _seccionesConCompras(compras, catDe);
+                      // Si la seccion elegida ya no existe (se renombro o se
+                      // movieron sus productos), se vuelve a "Todas".
+                      final seccionValida = secciones.contains(_seccion)
+                          ? _seccion
+                          : '';
+                      if (seccionValida != _seccion) _seccion = seccionValida;
+                      final filtradas = _filtrarPorSeccion(compras, catDe);
+
                       final precioMax = AnaliticaService.precioMaxPorProducto(
                           snapProd.data!, snapPre.data!, snapProv.data!);
                       final grupos = AnaliticaService.informe(
-                          compras, precioMax, _agrupacion);
+                          filtradas, precioMax, _agrupacion);
 
                       final totalGastado =
                           grupos.fold<double>(0, (s, g) => s + g.gastado);
@@ -142,6 +206,29 @@ class _InformesScreenState extends State<InformesScreen> {
                               selected: {_agrupacion},
                               onSelectionChanged: (s) =>
                                   setState(() => _agrupacion = s.first),
+                            ),
+                          ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey('seccion_$_seccion'),
+                              initialValue: _seccion,
+                              isDense: true,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                labelText: 'Sección',
+                              ),
+                              items: [
+                                const DropdownMenuItem(
+                                    value: '', child: Text('Todas')),
+                                for (final s in secciones)
+                                  DropdownMenuItem(value: s, child: Text(s)),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => _seccion = v ?? ''),
                             ),
                           ),
                           if (hayDosMeses)
@@ -179,6 +266,15 @@ class _InformesScreenState extends State<InformesScreen> {
                               padding:
                                   const EdgeInsets.fromLTRB(12, 8, 12, 90),
                               children: [
+                                if (grupos.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.all(24),
+                                    child: Text(
+                                      'No hay compras de esta sección.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ),
                                 for (int i = 0; i < grupos.length; i++)
                                   _FilaGrupo(
                                     grupo: grupos[i],
@@ -245,16 +341,21 @@ class _InformesScreenState extends State<InformesScreen> {
 
   Future<void> _exportarPdf(BuildContext context) async {
     // Recoge los datos actuales una vez.
-    final compras = await widget.db.compras().first;
+    final todas = await widget.db.compras().first;
+    final productos = await widget.db.productos().first;
+    // Mismo filtro de seccion que se ve en pantalla.
+    final compras = _filtrarPorSeccion(todas, _categoriaPorProducto(productos));
     if (compras.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay compras para exportar.')),
+          SnackBar(
+              content: Text(_seccion.isEmpty
+                  ? 'No hay compras para exportar.'
+                  : 'No hay compras de la sección $_seccion.')),
         );
       }
       return;
     }
-    final productos = await widget.db.productos().first;
     final proveedores = await widget.db.proveedores().first;
     final precios = await widget.db.precios().first;
 
@@ -289,11 +390,19 @@ class _InformesScreenState extends State<InformesScreen> {
           final widgets = <pw.Widget>[
             pw.Header(
               level: 0,
-              child: pw.Text('Informe de compras · ${_etiquetaAgrupacion()}',
+              child: pw.Text(
+                  'Informe de compras · ${_etiquetaAgrupacion()}'
+                  '${_seccion.isEmpty ? "" : " · $_seccion"}',
                   style: pw.TextStyle(
                       fontSize: 18, fontWeight: pw.FontWeight.bold)),
             ),
             pw.Text('Generado el ${fecha(DateTime.now())}'),
+            pw.Text(
+              _seccion.isEmpty
+                  ? 'Secciones: todas'
+                  : 'Sección: $_seccion (solo las líneas de esta sección)',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 12),
             pw.Table.fromTextArray(
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
