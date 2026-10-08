@@ -52,6 +52,7 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
   List<Proveedor> _proveedores = [];
   String? _proveedorId;
   DateTime _fecha = DateTime.now();
+  bool _esAbono = false; // albaran de abono / devolucion
   final List<_LineaEd> _lineas = [];
   // Último precio registrado por 'productoId|proveedorId', para avisar
   // de subidas al teclear el precio del albarán.
@@ -96,6 +97,10 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
       });
       _lineas.add(le);
     }
+    // Si el albaran trae cantidades o importes negativos, es un abono.
+    _esAbono = widget.resultado.lineas
+        .any((l) => (l.cantidad ?? 0) < 0 || (l.precioTotal ?? 0) < 0);
+    if (_esAbono) _quitarSignos();
     _aplicarCasado();
     if (mounted) setState(() => _cargando = false);
   }
@@ -130,8 +135,10 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
     for (final le in _lineas) {
       if (le.ignorar) continue;
       final producto = _prod(le.productoId);
-      final cant = double.tryParse(le.cantidad.text.trim().replaceAll(',', '.'));
-      final precio = double.tryParse(le.precio.text.trim().replaceAll(',', '.'));
+      final cantRaw = double.tryParse(le.cantidad.text.trim().replaceAll(',', '.'));
+      final cant = _esAbono ? cantRaw?.abs() : cantRaw;
+      final precioRaw = double.tryParse(le.precio.text.trim().replaceAll(',', '.'));
+      final precio = _esAbono ? precioRaw?.abs() : precioRaw;
 
       // Motivo por el que una línea no es guardable.
       if (producto == null) {
@@ -151,7 +158,7 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
         productoId: producto.id,
         productoNombre: producto.nombre,
         unidad: producto.unidadBase.nombre,
-        cantidad: cant,
+        cantidad: _esAbono ? -cant : cant,
         precioUnitario: precio,
       ));
 
@@ -212,16 +219,21 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
       for (final e in aprender) {
         await widget.db.agregarAlias(e.key, e.value);
       }
-      await widget.db.registrarCompra(Compra(
+      final compra = Compra(
         id: '',
         proveedorId: prov.id,
         proveedorNombre: prov.nombre,
         fecha: _fecha,
         lineas: lineasCompra,
-      ));
+      );
+      if (_esAbono) {
+        await widget.db.registrarAbono(compra);
+      } else {
+        await widget.db.registrarCompra(compra);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Compra guardada: ${lineasCompra.length} líneas.')),
+          SnackBar(content: Text('${_esAbono ? 'Abono guardado' : 'Compra guardada'}: ${lineasCompra.length} líneas.')),
         );
         Navigator.pop(context); // cierra revisión
         Navigator.pop(context); // cierra escáner
@@ -231,6 +243,15 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
         setState(() => _guardando = false);
         _aviso('Error al guardar: $e');
       }
+    }
+  }
+
+  /// En un abono se trabaja con cifras positivas; el signo menos se pone
+  /// al guardar. Quita los '-' que haya leido la foto.
+  void _quitarSignos() {
+    for (final le in _lineas) {
+      le.cantidad.text = le.cantidad.text.replaceAll('-', '').trim();
+      le.precio.text = le.precio.text.replaceAll('-', '').trim();
     }
   }
 
@@ -255,7 +276,7 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.save),
-            label: const Text('Guardar compra'),
+            label: Text(_esAbono ? 'Guardar abono' : 'Guardar compra'),
           ),
         ),
       ),
@@ -295,6 +316,16 @@ class _RevisionAlbaranScreenState extends State<RevisionAlbaranScreen> {
                 child: const Text('Cambiar fecha'),
               ),
             ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Es un abono / devolución'),
+            subtitle: const Text('Resta del proveedor y del gasto; no cuenta como precio'),
+            value: _esAbono,
+            onChanged: (v) => setState(() {
+              _esAbono = v;
+              if (v) _quitarSignos();
+            }),
           ),
           const Divider(),
           ..._lineas.map(_tarjetaLinea),

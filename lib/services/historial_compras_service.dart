@@ -143,7 +143,7 @@ class HistorialComprasService {
       final numero = _numeroAlbaran(c);
       for (var i = 0; i < c.lineas.length; i++) {
         final l = c.lineas[i];
-        if (l.precioUnitario <= 0) continue;
+        if (l.precioUnitario <= 0 || l.cantidad <= 0) continue;
         final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
         porProducto
             .putIfAbsent(clave, () => [])
@@ -184,7 +184,7 @@ class HistorialComprasService {
       final provColor = prov?.color ?? 0xFF9E9E9E;
       for (var i = 0; i < c.lineas.length; i++) {
         final l = c.lineas[i];
-        if (l.precioUnitario <= 0) continue;
+        if (l.precioUnitario <= 0 || l.cantidad <= 0) continue;
         final clave = l.productoId.isNotEmpty ? l.productoId : l.productoNombre;
         if (!claves.contains(clave)) continue;
         porProducto

@@ -31,8 +31,9 @@ class LineaAlbaran {
   /// Precio por unidad calculado: el unitario si viene, si no total/cantidad.
   double? get unitarioCalculado {
     if (precioUnitario != null && precioUnitario! > 0) return precioUnitario;
-    if (precioTotal != null && cantidad != null && cantidad! > 0) {
-      return precioTotal! / cantidad!;
+    if (precioTotal != null && cantidad != null && cantidad != 0) {
+      // abs(): en un abono cantidad e importe vienen en negativo.
+      return precioTotal!.abs() / cantidad!.abs();
     }
     return null;
   }

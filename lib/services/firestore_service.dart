@@ -472,6 +472,13 @@ class FirestoreService {
     await batch.commit();
   }
 
+  /// Registra un abono (devolucion): una compra con cantidades NEGATIVAS.
+  /// Resta del proveedor y del gasto mensual, pero NO crea precios, porque
+  /// una devolucion no es un precio de mercado.
+  Future<void> registrarAbono(Compra compra) async {
+    await _compras.add(compra.toMap());
+  }
+
   Future<void> borrarCompra(String id) => _compras.doc(id).delete();
 
   /// Quita una linea de una compra, y con ella el precio que dejo en el

@@ -158,6 +158,11 @@ class _AlbaranesDelProductoState extends State<AlbaranesDelProducto> {
   /// Abre el cuadro de correccion. Devuelve 'guardar', 'borrar' o nada.
   Future<void> _corregir(
       Compra c, LineaCompra l, int indice, String unidad) async {
+    if (l.cantidad < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Esto es un abono: no se edita desde aquí.')));
+      return;
+    }
     final cantCtrl = TextEditingController(text: _num(l.cantidad));
     final precioCtrl =
         TextEditingController(text: l.precioUnitario.toStringAsFixed(3));
