@@ -635,17 +635,20 @@ class _CompraDetalleScreen extends StatefulWidget {
 
 class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
   late final List<_LineaEdit> _lineas;
+  late final bool _esAbono; // albaran de abono: cantidades negativas
   bool _guardando = false;
 
   @override
   void initState() {
     super.initState();
     _lineas = widget.compra.lineas.map((l) => _LineaEdit(l)).toList();
+    _esAbono = widget.compra.lineas.any((l) => l.cantidad < 0);
   }
 
   double _unitario(_LineaEdit le) {
     final cant = double.tryParse(le.cantidad.text.replaceAll(',', '.')) ?? 0;
     final tot = double.tryParse(le.total.text.replaceAll(',', '.')) ?? 0;
+    if (_esAbono) return cant != 0 ? tot.abs() / cant.abs() : 0;
     return cant > 0 ? tot / cant : 0;
   }
 
@@ -659,7 +662,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
     for (final le in _lineas) {
       final cant = double.tryParse(le.cantidad.text.replaceAll(',', '.'));
       final tot = double.tryParse(le.total.text.replaceAll(',', '.'));
-      if (cant == null || cant <= 0 || tot == null) {
+      if (cant == null || tot == null || (_esAbono ? cant == 0 : cant <= 0)) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Revisa cantidad y precio de "${le.origen.productoNombre}".')));
         return;
@@ -668,15 +671,16 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
         productoId: le.origen.productoId,
         productoNombre: le.origen.productoNombre,
         unidad: le.origen.unidad,
-        cantidad: cant,
-        precioUnitario: tot / cant,
+        cantidad: _esAbono ? -cant.abs() : cant,
+        precioUnitario: _esAbono ? tot.abs() / cant.abs() : tot / cant,
       ));
     }
     setState(() => _guardando = true);
     try {
       await widget.db.actualizarCompraLineas(widget.compra.id, nuevasLineas);
       // Actualizar también el histórico de cada línea que cambió.
-      for (final l in nuevasLineas) {
+      // Un abono no deja precios en el historico: no hay nada que corregir.
+      for (final l in _esAbono ? <LineaCompra>[] : nuevasLineas) {
         await widget.db.actualizarPrecioDeCompra(
           productoId: l.productoId,
           proveedorId: widget.compra.proveedorId,
@@ -753,6 +757,15 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
             'Puedes añadir líneas que faltaron o quitar las que sobren.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
+          if (_esAbono)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'ABONO: resta del proveedor y del gasto. Puedes escribir las '
+                'cifras en positivo; se guardan en negativo. No toca el histórico de precios.',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
           const Divider(height: 24),
           ..._lineas.map(_tarjeta),
           const SizedBox(height: 8),
