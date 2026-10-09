@@ -9,6 +9,7 @@ import '../services/respaldo_service.dart';
 import 'huerfanos_screen.dart';
 import 'duplicados_screen.dart';
 import 'factores_screen.dart';
+import 'unidades_escandallo_screen.dart';
 import 'revisar_lineas_screen.dart';
 import 'dudosas_screen.dart';
 import 'mover_datos_screen.dart';
@@ -272,6 +273,17 @@ class _MantenimientoScreenState extends State<MantenimientoScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => FactoresScreen(db: widget.db)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.straighten),
+                    label: const Text('Unidades y ESCANDALLO'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              UnidadesEscandalloScreen(db: widget.db)),
                     ),
                   ),
                 ],
