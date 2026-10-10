@@ -589,6 +589,13 @@ class _SelectorProductoState extends State<_SelectorProducto> {
     // Pregunta el nombre (prerelleno con el del albarán, editable) y la unidad.
     final nombreCtrl = TextEditingController(text: widget.sugerencia);
     UnidadBase unidad = UnidadBase.kg;
+    // Categorias existentes (las de Firestore); 'General' siempre disponible.
+    List<String> cats = const [];
+    try {
+      cats = await widget.db.categorias().first;
+    } catch (_) {}
+    if (!cats.contains('General')) cats = [...cats, 'General'];
+    String categoria = 'General';
     final crear = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -619,6 +626,19 @@ class _SelectorProductoState extends State<_SelectorProducto> {
                 ],
                 onChanged: (v) => setLocal(() => unidad = v ?? UnidadBase.kg),
               ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: categoria,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Categoría',
+                  border: OutlineInputBorder(),
+                ),
+                items: cats
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) => setLocal(() => categoria = v ?? 'General'),
+              ),
             ],
           ),
           actions: [
@@ -639,7 +659,7 @@ class _SelectorProductoState extends State<_SelectorProducto> {
     final id = await widget.db.guardarProducto(Producto(
       id: '',
       nombre: nombre,
-      categoria: 'General',
+      categoria: categoria,
       unidadBase: unidad,
     ));
     if (mounted) Navigator.pop(context, 'nuevo:$id');
