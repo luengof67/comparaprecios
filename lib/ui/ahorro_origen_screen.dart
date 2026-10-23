@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/compra.dart';
+import '../models/producto.dart';
 import '../services/analitica_service.dart';
 import '../services/firestore_service.dart';
 import 'formato.dart';
