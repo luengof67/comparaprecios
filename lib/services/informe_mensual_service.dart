@@ -1,11 +1,10 @@
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/compra.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Informe de cierre de mes: cuánto se ha gastado, con quién, en qué,
@@ -94,92 +93,42 @@ class InformeMensualService {
     String pctDe(double v) =>
         total > 0 ? '${(v / total * 100).toStringAsFixed(1)}%' : '—';
 
-    pw.Widget titulo(String t) => pw.Padding(
-          padding: const pw.EdgeInsets.only(top: 14, bottom: 4),
-          child: pw.Text(t,
-              style:
-                  pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-        );
-
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+      EstiloPdf.paginas(
         build: (context) => [
-          pw.Header(
-            level: 0,
-            child: pw.Text('Cierre de compras · $nombreMes',
-                style:
-                    pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          EstiloPdf.cabecera(
+            'Cierre de compras · $nombreMes',
+            derecha: fecha(DateTime.now()),
+            subtitulo: '${delMes.length} compra${delMes.length == 1 ? "" : "s"} registrada'
+                '${delMes.length == 1 ? "" : "s"}'
+                ' · ${proveedoresOrd.length} proveedor'
+                '${proveedoresOrd.length == 1 ? "" : "es"}',
           ),
-          pw.Text('Generado el ${fecha(DateTime.now())} · '
-              '${delMes.length} compras registradas'),
-          pw.SizedBox(height: 10),
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.grey200,
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('GASTO TOTAL DEL MES',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                pw.Text(euros(total),
-                    style: pw.TextStyle(
-                        fontSize: 16, fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-          ),
+          EstiloPdf.destacado('Gasto total del mes', euros(total)),
           if (delMes.isEmpty)
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(top: 12),
-              child: pw.Text('No hay compras registradas en este mes.'),
-            ),
+            EstiloPdf.vacio('No hay compras registradas en este mes.'),
           if (delMes.isNotEmpty) ...[
-            titulo('Gasto por proveedor'),
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerRight,
-                2: pw.Alignment.centerRight,
-              },
-              headers: ['Proveedor', 'Gasto', '% del total'],
-              data: proveedoresOrd
+            EstiloPdf.seccion('Gasto por proveedor', arriba: 16),
+            EstiloPdf.tabla(
+              cabeceras: ['Proveedor', 'Gasto', '% del total'],
+              anchos: [5, 2, 2],
+              filas: proveedoresOrd
                   .map((e) => [e.key, euros(e.value), pctDe(e.value)])
                   .toList(),
             ),
-            titulo('Gasto por categoría'),
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerRight,
-                2: pw.Alignment.centerRight,
-              },
-              headers: ['Categoría', 'Gasto', '% del total'],
-              data: categoriasOrd
+            EstiloPdf.seccion('Gasto por categoría', arriba: 16),
+            EstiloPdf.tabla(
+              cabeceras: ['Categoría', 'Gasto', '% del total'],
+              anchos: [5, 2, 2],
+              filas: categoriasOrd
                   .map((e) => [e.key, euros(e.value), pctDe(e.value)])
                   .toList(),
             ),
-            titulo('Top 10 productos por gasto'),
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerRight,
-                2: pw.Alignment.centerRight,
-                3: pw.Alignment.centerRight,
-              },
-              headers: ['Producto', 'Cantidad', 'Precio medio', 'Gasto'],
-              data: top10.map((e) {
+            EstiloPdf.seccion('Top 10 productos por gasto', arriba: 16),
+            EstiloPdf.tabla(
+              cabeceras: ['Producto', 'Cantidad', 'Precio medio', 'Gasto'],
+              anchos: [5, 2, 2, 2],
+              filas: top10.map((e) {
                 final v = e.value;
                 final medio = v.cant > 0 ? v.gasto / v.cant : 0;
                 return [
@@ -191,34 +140,23 @@ class InformeMensualService {
               }).toList(),
             ),
             if (topVar.isNotEmpty) ...[
-              titulo('Mayores variaciones de precio en el mes'),
-              pw.Table.fromTextArray(
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration:
-                    const pw.BoxDecoration(color: PdfColors.grey300),
-                cellAlignments: {
-                  0: pw.Alignment.centerLeft,
-                  1: pw.Alignment.centerRight,
-                  2: pw.Alignment.centerRight,
-                  3: pw.Alignment.centerRight,
-                },
-                headers: ['Producto', 'Inicio de mes', 'Fin de mes', 'Variación'],
-                data: topVar
+              EstiloPdf.seccion('Mayores variaciones de precio en el mes',
+                  arriba: 16),
+              EstiloPdf.tabla(
+                cabeceras: ['Producto', 'Inicio de mes', 'Fin de mes', 'Variación'],
+                anchos: [5, 2, 2, 2],
+                filas: topVar
                     .map((v) => [
                           v.nombre,
                           euros3(v.ini),
                           euros3(v.fin),
-                          '${v.pct >= 0 ? "+" : ""}${v.pct.toStringAsFixed(1)}%',
+                          '${v.pct >= 0 ? "▲ +" : "▼ "}${v.pct.toStringAsFixed(1)}%',
                         ])
                     .toList(),
-                cellStyle: const pw.TextStyle(fontSize: 10),
               ),
-              pw.SizedBox(height: 4),
-              pw.Text(
-                'Variación = primer precio pagado en el mes vs último. '
+              EstiloPdf.nota(
+                'Variación = primer precio pagado en el mes frente al último. '
                 'Útil para detectar subidas y preparar la negociación.',
-                style:
-                    const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
               ),
             ],
           ],

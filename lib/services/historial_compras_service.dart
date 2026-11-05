@@ -1,4 +1,3 @@
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -6,6 +5,7 @@ import '../models/compra.dart';
 import '../models/producto.dart';
 import '../models/proveedor.dart';
 import '../ui/formato.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Una compra concreta de un producto, con la variacion respecto a la compra
@@ -235,29 +235,20 @@ class HistorialComprasService {
 
     final doc = await FuentesPdf.documento();
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+      EstiloPdf.paginas(
         build: (ctx) {
           final w = <pw.Widget>[
-            pw.Header(
-              level: 0,
-              child: pw.Text('Historial de precios · $titulo',
-                  style: pw.TextStyle(
-                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+            EstiloPdf.cabecera(
+              'Historial de precios · $titulo',
+              derecha: fecha(DateTime.now()),
+              subtitulo: '${lista.length} producto${lista.length == 1 ? "" : "s"} · '
+                  '${euros(gastoTotal)} en total'
+                  '${soloConSubidas ? " · solo con subidas" : ""}',
             ),
-            pw.Text('Generado el ${fecha(DateTime.now())}'),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              '${lista.length} producto${lista.length == 1 ? "" : "s"} · '
-              '${euros(gastoTotal)} en total'
-              '${soloConSubidas ? " · solo con subidas" : ""}',
-              style: const pw.TextStyle(fontSize: 10),
-            ),
-            pw.SizedBox(height: 10),
           ];
 
           if (lista.isEmpty) {
-            w.add(pw.Text('No hay compras registradas.'));
+            w.add(EstiloPdf.vacio('No hay compras registradas.'));
             return w;
           }
 
@@ -282,49 +273,27 @@ class HistorialComprasService {
               1.8,
             ];
 
-            w.add(pw.SizedBox(height: 12));
-            w.add(pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(h.producto.nombre,
-                    style: pw.TextStyle(
-                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                if (h.variacionTotal != null)
-                  pw.Text(
-                    '${h.variacionTotal! > 0 ? "+" : ""}'
-                    '${(h.variacionTotal! * 100).toStringAsFixed(0)}% '
-                    'desde la primera compra',
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      fontWeight: pw.FontWeight.bold,
-                      color: h.variacionTotal! > 0.005
-                          ? PdfColors.red700
-                          : h.variacionTotal! < -0.005
-                              ? PdfColors.green700
-                              : PdfColors.grey700,
-                    ),
-                  ),
-              ],
+            final vt = h.variacionTotal;
+            w.add(EstiloPdf.seccion(
+              h.producto.nombre,
+              derecha: vt == null
+                  ? null
+                  : '${vt > 0 ? "+" : ""}${(vt * 100).toStringAsFixed(0)}% '
+                      'desde la primera compra',
+              colorDerecha: vt == null
+                  ? null
+                  : vt > 0.005
+                      ? EstiloPdf.rojo
+                      : vt < -0.005
+                          ? EstiloPdf.verde
+                          : EstiloPdf.gris,
+              arriba: 16,
             ));
-            w.add(pw.SizedBox(height: 4));
-            w.add(pw.TableHelper.fromTextArray(
-              headerStyle:
-                  pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-              cellStyle: const pw.TextStyle(fontSize: 9),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignments: {
-                for (var i = 0; i < headers.length; i++)
-                  i: i == 0 || (mostrarProveedor && i == 1)
-                      ? pw.Alignment.centerLeft
-                      : pw.Alignment.centerRight,
-              },
-              columnWidths: {
-                for (var i = 0; i < anchos.length; i++)
-                  i: pw.FlexColumnWidth(anchos[i]),
-              },
-              headers: headers,
-              data: h.compras.map((c) {
+            w.add(EstiloPdf.tabla(
+              cabeceras: headers,
+              anchos: anchos,
+              izquierda: {0, if (mostrarProveedor) 1},
+              filas: h.compras.map((c) {
                 final fila = <String>[fecha(c.fecha)];
                 if (mostrarProveedor) fila.add(c.proveedorNombre);
                 fila.addAll([
@@ -341,17 +310,7 @@ class HistorialComprasService {
             ));
           }
 
-          w.add(pw.SizedBox(height: 16));
-          w.add(pw.Divider());
-          w.add(pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.end,
-            children: [
-              pw.Text('TOTAL ${euros(gastoTotal)}',
-                  style: pw.TextStyle(
-                      fontSize: 13, fontWeight: pw.FontWeight.bold)),
-            ],
-          ));
-
+          w.add(EstiloPdf.total('Total', euros(gastoTotal)));
           return w;
         },
       ),

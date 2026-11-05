@@ -1,10 +1,10 @@
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/comparativa.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Genera la HOJA DE PEDIDO imprimible: solo los productos con cantidad puesta
@@ -61,37 +61,22 @@ class HojaPedidoService {
     final doc = await FuentesPdf.documento();
 
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(28),
+      EstiloPdf.paginas(
         build: (ctx) {
-          final widgets = <pw.Widget>[];
-          widgets.add(
-            pw.Text('Hoja de pedido',
-                style:
-                    pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-          );
-          widgets.add(pw.SizedBox(height: 2));
-          widgets.add(
-            pw.Text(
-              'Generada el ${fecha(DateTime.now())} · '
-              '${pedido.length} productos',
-              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+          final widgets = <pw.Widget>[
+            EstiloPdf.cabecera(
+              'Hoja de pedido',
+              derecha: fecha(DateTime.now()),
+              subtitulo: '${pedido.length} producto${pedido.length == 1 ? "" : "s"}'
+                  ' · ${provIds.length} proveedor${provIds.length == 1 ? "" : "es"}',
             ),
-          );
-          widgets.add(pw.SizedBox(height: 12));
+          ];
 
           if (pedido.isEmpty) {
-            widgets.add(
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(20),
-                child: pw.Text(
-                  'No hay productos con cantidad en el pedido. Monta la lista '
-                  '(pon cantidades) y vuelve a generar la hoja.',
-                  style: const pw.TextStyle(color: PdfColors.grey700),
-                ),
-              ),
-            );
+            widgets.add(EstiloPdf.vacio(
+              'No hay productos con cantidad en el pedido. Monta la lista '
+              '(pon cantidades) y vuelve a generar la hoja.',
+            ));
             return widgets;
           }
 
@@ -99,65 +84,30 @@ class HojaPedidoService {
             final nombre = pid == 'SIN'
                 ? 'Sin proveedor asignado'
                 : (nombreProv[pid] ?? 'Proveedor');
-            // Cabecera del proveedor.
-            widgets.add(
-              pw.Container(
-                width: double.infinity,
-                margin: const pw.EdgeInsets.only(top: 10, bottom: 4),
-                padding:
-                    const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-                color: PdfColors.grey200,
-                child: pw.Text(nombre.toUpperCase(),
-                    style: pw.TextStyle(
-                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
-              ),
-            );
-            // Tabla de productos de este proveedor.
-            widgets.add(
-              pw.Table(
-                border:
-                    pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(6), // producto
-                  1: const pw.FlexColumnWidth(3), // cantidad a pedir
-                  2: const pw.FlexColumnWidth(3), // precio orient.
-                },
-                children: [
-                  pw.TableRow(
-                    decoration:
-                        const pw.BoxDecoration(color: PdfColors.grey100),
-                    children: [
-                      _cel('Producto', bold: true),
-                      _cel('Pedir', bold: true),
-                      _cel('Últ. precio', bold: true),
-                    ],
-                  ),
-                  ...porProveedor[pid]!.map((c) {
-                    final p = c.producto;
-                    final cant = p.cantidadEfectiva;
-                    // Texto de cantidad: cajas o unidad base.
-                    final String pedirTxt;
-                    if (p.pedirEnFormato && p.formatoSemana.isNotEmpty) {
-                      final f = p.formatoSemana;
-                      pedirTxt = '${_n(cant)} $f${cant == 1 ? "" : "s"}';
-                    } else {
-                      pedirTxt = '${_n(cant)} ${p.unidadBase.nombre}';
-                    }
-                    // Precio de orientacion, o guion si aun no tiene.
-                    final precio = c.tieneDatos
-                        ? '${euros3(c.masBarato!.precioUnitario)}/${p.unidadBase.nombre}'
-                        : '—';
-                    return pw.TableRow(
-                      children: [
-                        _cel(p.nombre),
-                        _cel(pedirTxt),
-                        _cel(precio),
-                      ],
-                    );
-                  }),
-                ],
-              ),
-            );
+            final lineas = porProveedor[pid]!;
+            widgets.add(EstiloPdf.seccion(
+              nombre,
+              derecha: '${lineas.length} producto${lineas.length == 1 ? "" : "s"}',
+              colorDerecha: EstiloPdf.gris,
+            ));
+            widgets.add(_rotulos());
+            for (final c in lineas) {
+              final p = c.producto;
+              final cant = p.cantidadEfectiva;
+              // Texto de cantidad: cajas o unidad base.
+              final String pedirTxt;
+              if (p.pedirEnFormato && p.formatoSemana.isNotEmpty) {
+                final f = p.formatoSemana;
+                pedirTxt = '${_n(cant)} $f${cant == 1 ? "" : "s"}';
+              } else {
+                pedirTxt = '${_n(cant)} ${p.unidadBase.nombre}';
+              }
+              // Precio de orientacion, o guion si aun no tiene.
+              final precio = c.tieneDatos
+                  ? '${euros3(c.masBarato!.precioUnitario)}/${p.unidadBase.nombre}'
+                  : '—';
+              widgets.add(_fila(p.nombre, pedirTxt, precio));
+            }
           }
 
           return widgets;
@@ -170,11 +120,66 @@ class HojaPedidoService {
 
   static String _n(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
 
-  static pw.Widget _cel(String texto, {bool bold = false}) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 5),
-        child: pw.Text(texto,
-            style: pw.TextStyle(
-                fontSize: 11,
-                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+  static const double _anchoPedir = 80;
+  static const double _anchoPrecio = 90;
+
+  static pw.Widget _rotulos() {
+    final estilo = pw.TextStyle(
+      fontSize: 6.5,
+      fontWeight: pw.FontWeight.bold,
+      color: EstiloPdf.gris,
+    );
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 1),
+      child: pw.Row(
+        children: [
+          pw.Expanded(child: pw.SizedBox()),
+          pw.SizedBox(
+            width: _anchoPedir,
+            child: pw.Text('PEDIR', style: estilo, textAlign: pw.TextAlign.right),
+          ),
+          pw.SizedBox(
+            width: _anchoPrecio,
+            child: pw.Text('ÚLT. PRECIO',
+                style: estilo, textAlign: pw.TextAlign.right),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _fila(String producto, String pedir, String precio) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2.5),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            EstiloPdf.conPuntos(
+              pw.Text(producto,
+                  style: const pw.TextStyle(
+                      fontSize: 10, color: EstiloPdf.tinta)),
+            ),
+            pw.SizedBox(
+              width: _anchoPedir,
+              child: pw.Text(
+                pedir,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: EstiloPdf.tinta,
+                ),
+              ),
+            ),
+            pw.SizedBox(
+              width: _anchoPrecio,
+              child: pw.Text(
+                precio,
+                textAlign: pw.TextAlign.right,
+                style: const pw.TextStyle(fontSize: 8.5, color: EstiloPdf.gris),
+              ),
+            ),
+          ],
+        ),
       );
 }

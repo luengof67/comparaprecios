@@ -1,10 +1,10 @@
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/comparativa.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Una línea de la compra óptima: un producto asignado a su proveedor más barato.
@@ -123,84 +123,58 @@ class InformeCompraService {
     final doc = await FuentesPdf.documento();
 
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+      EstiloPdf.paginas(
         build: (context) => [
-          pw.Header(
-            level: 0,
-            child: pw.Text('Lista de compra óptima',
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          EstiloPdf.cabecera(
+            'Lista de compra óptima',
+            derecha: fecha(DateTime.now()),
+            subtitulo: '${claves.length} proveedor${claves.length == 1 ? "" : "es"}'
+                ' · ${euros(totalOptimo)} estimados',
           ),
-          pw.Text('Generada el ${fecha(DateTime.now())}'),
-          pw.SizedBox(height: 4),
-          pw.Text(
+          EstiloPdf.nota(
             'Los importes de productos que se piden por caja/saco son estimados '
             '(el peso real se ajusta al recibir el albarán). El guion (—) indica '
             'un producto sin precio registrado todavía.',
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            arriba: 0,
           ),
-          pw.SizedBox(height: 12),
+          if (claves.isEmpty)
+            EstiloPdf.vacio('No hay productos con cantidad en la lista.'),
           // Una sección por proveedor.
-          ...claves.map((clave) {
+          for (final clave in claves) ...() {
             final lineas = porProveedor[clave]!;
-            final subtotal =
-                lineas.fold<double>(0, (s, l) => s + l.subtotal);
+            final subtotal = lineas.fold<double>(0, (s, l) => s + l.subtotal);
             final hayCajas = lineas.any((l) => l.enFormato);
             final haySinPrecio = lineas.any((l) => l.sinPrecio);
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.SizedBox(height: 10),
-                pw.Text(clave,
-                    style: pw.TextStyle(
-                        fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 4),
-                pw.Table.fromTextArray(
-                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                  headerDecoration:
-                      const pw.BoxDecoration(color: PdfColors.grey300),
-                  cellAlignments: {
-                    0: pw.Alignment.centerLeft,
-                    1: pw.Alignment.centerRight,
-                    2: pw.Alignment.centerRight,
-                    3: pw.Alignment.centerRight,
-                  },
-                  headers: ['Producto', 'Pedir', 'Precio', 'Subtotal'],
-                  data: lineas
-                      .map((l) => [
-                            l.producto,
-                            l.pedido,
-                            l.textoPrecio,
-                            l.textoSubtotal,
-                          ])
-                      .toList(),
-                ),
-                pw.SizedBox(height: 4),
+            return <pw.Widget>[
+              EstiloPdf.seccion(clave, derecha: euros(subtotal)),
+              EstiloPdf.tabla(
+                cabeceras: ['Producto', 'Pedir', 'Precio', 'Subtotal'],
+                anchos: [5, 2, 2, 2],
+                filas: lineas
+                    .map((l) => [
+                          l.producto,
+                          l.pedido,
+                          l.textoPrecio,
+                          l.textoSubtotal,
+                        ])
+                    .toList(),
+              ),
+              if (hayCajas || haySinPrecio)
                 pw.Align(
                   alignment: pw.Alignment.centerRight,
-                  child: pw.Text(
-                      'Subtotal $clave: ${euros(subtotal)}'
-                      '${hayCajas ? " (+ lo que se pide por caja)" : ""}'
-                      '${haySinPrecio ? " (+ productos sin precio)" : ""}',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  child: EstiloPdf.nota(
+                    '${hayCajas ? "+ lo que se pide por caja" : ""}'
+                    '${hayCajas && haySinPrecio ? " · " : ""}'
+                    '${haySinPrecio ? "+ productos sin precio" : ""}',
+                  ),
                 ),
-              ],
-            );
-          }),
-          pw.SizedBox(height: 16),
-          pw.Divider(),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('TOTAL compra: ${euros(totalOptimo)}',
-                  style: pw.TextStyle(
-                      fontSize: 14, fontWeight: pw.FontWeight.bold)),
-              pw.Text('Ahorro vs más caro: ${euros(ahorro)}',
-                  style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.green800)),
-            ],
+            ];
+          }(),
+          EstiloPdf.total(
+            'Total compra',
+            euros(totalOptimo),
+            nota: 'Ahorro frente al más caro: ${euros(ahorro)}',
+            colorNota: EstiloPdf.verde,
           ),
         ],
       ),

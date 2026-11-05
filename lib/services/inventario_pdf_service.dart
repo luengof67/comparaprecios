@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Una línea del inventario: el producto y un detalle opcional
@@ -88,9 +89,9 @@ class InventarioPdfService {
       doc.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4.copyWith(
-            marginLeft: 20,
-            marginRight: 20,
-            marginTop: 18,
+            marginLeft: 22,
+            marginRight: 22,
+            marginTop: 20,
             marginBottom: 18,
           ),
           build: (context) => pw.Column(
@@ -102,7 +103,7 @@ class InventarioPdfService {
                 hoja: (i ~/ 2) + 1,
                 total: totalHojas,
               ),
-              pw.SizedBox(height: 8),
+              pw.SizedBox(height: 6),
               pw.Expanded(
                 child: pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -169,39 +170,18 @@ class InventarioPdfService {
     required int hoja,
     required int total,
   }) {
+    final gris = pw.TextStyle(fontSize: 8, color: EstiloPdf.gris);
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Text(
-              titulo,
-              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Text(
-              'Hoja $hoja de $total',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 3),
+        EstiloPdf.cabecera(titulo, derecha: 'Hoja $hoja de $total'),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(
-              'Fecha: $fecha',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-            ),
-            pw.Text(
-              'Realizado por: ______________________',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-            ),
+            pw.Text('Fecha: $fecha', style: gris),
+            pw.Text('Realizado por: ______________________', style: gris),
           ],
         ),
-        pw.SizedBox(height: 4),
-        pw.Divider(height: 1, thickness: 0.8, color: PdfColors.grey800),
       ],
     );
   }
@@ -218,31 +198,33 @@ class InventarioPdfService {
     );
   }
 
+  /// Hueco entre casillas.
+  static const double _hueco = 2.0;
+
   /// Rótulos de las tres casillas, repetidos arriba de cada columna.
   static pw.Widget _rotulos() {
+    final estilo = pw.TextStyle(
+      fontSize: 6,
+      fontWeight: pw.FontWeight.bold,
+      color: EstiloPdf.acento,
+    );
     pw.Widget rotulo(String texto) => pw.Container(
           width: _anchoCasilla,
+          margin: const pw.EdgeInsets.only(left: _hueco),
           alignment: pw.Alignment.center,
-          child: pw.Text(
-            texto,
-            style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
-          ),
+          child: pw.Text(texto, style: estilo),
         );
 
     return pw.Container(
       height: 12,
       decoration: const pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(width: 0.8, color: PdfColors.grey800)),
+        border: pw.Border(
+            bottom: pw.BorderSide(width: 0.8, color: EstiloPdf.tinta)),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Expanded(
-            child: pw.Text(
-              'PRODUCTO',
-              style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
-            ),
-          ),
+          pw.Expanded(child: pw.Text('PRODUCTO', style: estilo)),
           rotulo('EXIST.'),
           rotulo('PREV.'),
           rotulo('COMPRA'),
@@ -254,14 +236,21 @@ class InventarioPdfService {
   static pw.Widget _cabeceraFamilia(String texto) {
     return pw.Container(
       height: _altoFila + 2,
-      color: PdfColors.grey300,
-      padding: const pw.EdgeInsets.symmetric(horizontal: 3),
-      alignment: pw.Alignment.centerLeft,
+      alignment: pw.Alignment.bottomLeft,
+      padding: const pw.EdgeInsets.only(bottom: 1.5),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+            bottom: pw.BorderSide(width: 0.6, color: EstiloPdf.acento)),
+      ),
       child: pw.Text(
         texto,
         maxLines: 1,
         overflow: pw.TextOverflow.clip,
-        style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold),
+        style: pw.TextStyle(
+          fontSize: 7.5,
+          fontWeight: pw.FontWeight.bold,
+          color: EstiloPdf.acento,
+        ),
       ),
     );
   }
@@ -269,32 +258,24 @@ class InventarioPdfService {
   static pw.Widget _filaProducto(ItemInventario item) {
     final tieneDetalle = item.detalle != null && item.detalle!.trim().isNotEmpty;
 
-    pw.Widget casilla() => pw.Container(
-          width: _anchoCasilla,
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(left: pw.BorderSide(width: 0.4, color: PdfColors.grey600)),
-          ),
+    pw.Widget casilla() => pw.Padding(
+          padding: const pw.EdgeInsets.only(left: _hueco),
+          child: EstiloPdf.casilla(ancho: _anchoCasilla, alto: _altoFila - 3),
         );
 
     return pw.Container(
       height: _altoFila,
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(width: 0.4, color: PdfColors.grey500)),
-      ),
       child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Expanded(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.only(left: 3),
-              alignment: pw.Alignment.centerLeft,
-              child: pw.Text(
-                tieneDetalle ? '${item.nombre}  ·  ${item.detalle}' : item.nombre,
-                maxLines: 1,
-                overflow: pw.TextOverflow.clip,
-                style: const pw.TextStyle(fontSize: 7),
-              ),
+          EstiloPdf.conPuntos(
+            pw.Text(
+              tieneDetalle ? '${item.nombre}  ·  ${item.detalle}' : item.nombre,
+              maxLines: 1,
+              overflow: pw.TextOverflow.clip,
+              style: const pw.TextStyle(fontSize: 7, color: EstiloPdf.tinta),
             ),
+            sangria: 3,
           ),
           casilla(),
           casilla(),

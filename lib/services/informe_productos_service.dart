@@ -1,11 +1,11 @@
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/compra.dart';
 import '../models/producto.dart';
 import '../ui/formato.dart';
+import 'estilo_pdf.dart';
 import 'fuentes_pdf.dart';
 
 /// Un producto en un mes: cantidad y gasto sumados.
@@ -138,37 +138,31 @@ class InformeProductosService {
 
     final doc = await FuentesPdf.documento();
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+      EstiloPdf.paginas(
         build: (ctx) {
           final w = <pw.Widget>[
-            _cabecera('Productos comprados · ${_mesLargo(mes)}',
-                '${delMes.length} productos distintos en $nCompras compras · '
-                    '${euros(totalGasto)} en total'),
+            EstiloPdf.cabecera(
+              'Productos comprados · ${_mesLargo(mes)}',
+              derecha: fecha(DateTime.now()),
+              subtitulo: '${delMes.length} productos distintos en $nCompras compras',
+            ),
+            EstiloPdf.destacado('Gasto del mes', euros(totalGasto)),
           ];
 
           if (delMes.isEmpty) {
-            w.add(pw.Text('No hay compras registradas en este mes.'));
+            w.add(EstiloPdf.vacio('No hay compras registradas en este mes.'));
             return w;
           }
 
           for (final e in categorias) {
             final sub = suma(e.value);
             final pct = totalGasto > 0 ? sub / totalGasto * 100 : 0;
-            w.add(pw.SizedBox(height: 10));
-            w.add(pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(e.key,
-                    style: pw.TextStyle(
-                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                pw.Text('${euros(sub)} · ${pct.toStringAsFixed(0)}%',
-                    style: pw.TextStyle(
-                        fontSize: 11, fontWeight: pw.FontWeight.bold)),
-              ],
+            w.add(EstiloPdf.seccion(
+              e.key,
+              derecha: '${euros(sub)} · ${pct.toStringAsFixed(0)}%',
+              arriba: 16,
             ));
-            w.add(pw.SizedBox(height: 4));
-            w.add(_tabla(
+            w.add(EstiloPdf.tabla(
               cabeceras: ['Producto', 'Cantidad', 'Gasto'],
               anchos: [5, 2, 2],
               filas: e.value
@@ -181,7 +175,7 @@ class InformeProductosService {
             ));
           }
 
-          w.add(_total(totalGasto));
+          w.add(EstiloPdf.total('Total', euros(totalGasto)));
           return w;
         },
       ),
@@ -220,36 +214,28 @@ class InformeProductosService {
 
     final doc = await FuentesPdf.documento();
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+      EstiloPdf.paginas(
         build: (ctx) {
           final w = <pw.Widget>[
-            _cabecera('Histórico de compras · $titulo',
-                '${productos.length} producto${productos.length == 1 ? "" : "s"} · '
-                    '${euros(totalGasto)} en total$rango'),
+            EstiloPdf.cabecera(
+              'Histórico de compras · $titulo',
+              derecha: fecha(DateTime.now()),
+              subtitulo:
+                  '${productos.length} producto${productos.length == 1 ? "" : "s"} · '
+                  '${euros(totalGasto)} en total$rango',
+            ),
           ];
 
           for (final r in productos) {
             final meses = r.ordenadosEn(mesesElegidos);
             if (meses.isEmpty) continue;
-            w.add(pw.SizedBox(height: 12));
-            w.add(pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(r.nombre,
-                    style: pw.TextStyle(
-                        fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                pw.Text(
-                    '${_num(cantidadDe(r))} ${r.unidad} · ${euros(totalDe(r))}',
-                    style: pw.TextStyle(
-                        fontSize: 11, fontWeight: pw.FontWeight.bold)),
-              ],
+            w.add(EstiloPdf.seccion(
+              r.nombre,
+              derecha: '${_num(cantidadDe(r))} ${r.unidad} · ${euros(totalDe(r))}',
+              arriba: 16,
             ));
-            w.add(pw.Text(r.categoria,
-                style: const pw.TextStyle(
-                    fontSize: 9, color: PdfColors.grey700)));
-            w.add(pw.SizedBox(height: 4));
-            w.add(_tabla(
+            w.add(EstiloPdf.nota(r.categoria, arriba: 0));
+            w.add(EstiloPdf.tabla(
               cabeceras: ['Mes', 'Cantidad', '€/${r.unidad}', 'Gasto'],
               anchos: [3, 2, 2, 2],
               filas: [
@@ -265,7 +251,7 @@ class InformeProductosService {
             ));
           }
 
-          w.add(_total(totalGasto));
+          w.add(EstiloPdf.total('Total', euros(totalGasto)));
           return w;
         },
       ),
@@ -288,56 +274,4 @@ class InformeProductosService {
     if (dif < -0.03) return '▼ $p';
     return p;
   }
-
-  // ------------------------------------------------------------ piezas PDF
-
-  static pw.Widget _cabecera(String titulo, String resumen) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Header(
-            level: 0,
-            child: pw.Text(titulo,
-                style: pw.TextStyle(
-                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          ),
-          pw.Text('Generado el ${fecha(DateTime.now())}'),
-          pw.SizedBox(height: 4),
-          pw.Text(resumen, style: const pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(height: 8),
-        ],
-      );
-
-  static pw.Widget _tabla({
-    required List<String> cabeceras,
-    required List<double> anchos,
-    required List<List<String>> filas,
-  }) =>
-      pw.TableHelper.fromTextArray(
-        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-        cellStyle: const pw.TextStyle(fontSize: 9),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-        cellAlignments: {
-          for (var i = 0; i < cabeceras.length; i++)
-            i: i == 0 ? pw.Alignment.centerLeft : pw.Alignment.centerRight,
-        },
-        columnWidths: {
-          for (var i = 0; i < anchos.length; i++)
-            i: pw.FlexColumnWidth(anchos[i]),
-        },
-        headers: cabeceras,
-        data: filas,
-      );
-
-  static pw.Widget _total(double total) => pw.Column(children: [
-        pw.SizedBox(height: 16),
-        pw.Divider(),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.end,
-          children: [
-            pw.Text('TOTAL ${euros(total)}',
-                style: pw.TextStyle(
-                    fontSize: 13, fontWeight: pw.FontWeight.bold)),
-          ],
-        ),
-      ]);
 }
